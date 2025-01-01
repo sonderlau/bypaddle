@@ -41,7 +41,8 @@ class WebSocketHandler(logging.Handler):
             import json
             asyncio.create_task(manager.broadcast(json.dumps(message)))
         except Exception as e:
-            root_logger.error(f"Error in WebSocket handler: {str(e)}")
+            import sys
+            print(f"Error in WebSocket handler: {str(e)}", file=sys.stderr)
             self.handleError(record)
 
 websocket_handler = WebSocketHandler()
