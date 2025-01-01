@@ -91,6 +91,11 @@
             color: #666;
             text-align: center;
         }
+        .system-message {
+            font-size: 14px;
+            color: #666;
+            background-color: #f8f9fa !important;
+        }
     </style>
 </head>
 <body>
@@ -119,6 +124,9 @@
             }
         }
 
+        // 生成随机用户ID
+        const userId = 'user_' + Math.random().toString(36).substr(2, 9);
+        
         async function askQuestion() {
             const input = document.getElementById('questionInput');
             const question = input.value.trim();
@@ -139,12 +147,17 @@
                     },
                     body: JSON.stringify({
                         question: question,
+                        user_id: userId,  // 添加用户ID
                         return_context: true
                     })
                 });
 
                 const data = await response.json();
                 if (response.ok) {
+                    // 如果有改写的查询，显示它
+                    if (data.rewritten_query && data.rewritten_query !== question) {
+                        addMessage(`(系统理解为: ${data.rewritten_query})`, true, null, true);
+                    }
                     addMessage(data.answer, false, data.context);
                 } else {
                     addMessage('抱歉，我遇到了一些问题，请稍后再试。', false);
@@ -157,13 +170,13 @@
             document.getElementById('loading').style.display = 'none';
         }
 
-        function addMessage(text, isUser, context = null) {
+        function addMessage(text, isUser, context = null, isSystem = false) {
             const messagesDiv = document.getElementById('chatMessages');
             const messageDiv = document.createElement('div');
             messageDiv.className = `message ${isUser ? 'user' : 'bot'}`;
             
             const contentDiv = document.createElement('div');
-            contentDiv.className = 'message-content';
+            contentDiv.className = 'message-content' + (isSystem ? ' system-message' : '');
             contentDiv.textContent = text;
             messageDiv.appendChild(contentDiv);
 
