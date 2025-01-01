@@ -5,6 +5,7 @@ from openai import OpenAI
 from pathlib import Path
 import os
 import importlib.util
+import httpx
 
 # 动态导入向量处理器
 spec = importlib.util.spec_from_file_location("vector_processor", "7-1.vector-with-abstract.py")
@@ -49,9 +50,11 @@ class LLMRAG:
         self.final_top_k = final_top_k
         
         # 初始化OpenAI客户端
+        http_client = httpx.Client()
         self.client = OpenAI(
             api_key=api_key,
-            base_url="https://dashscope.aliyuncs.com/compatible-mode/v1"
+            base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+            http_client=http_client
         )
         
         # 初始化向量处理器
