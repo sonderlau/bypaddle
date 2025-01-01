@@ -1,7 +1,7 @@
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, WebSocket
 from pydantic import BaseModel
 import uvicorn
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 import os
 from dotenv import load_dotenv
 import logging
@@ -10,6 +10,11 @@ from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
 from openai import OpenAI
+import asyncio
+from event_bus import EventBus
+
+# 获取项目根目录的绝对路径
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # 加载环境变量
 load_dotenv()
@@ -41,15 +46,50 @@ app = FastAPI(
 )
 
 # 创建模板目录
-templates = Jinja2Templates(directory="templates")
+templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 
 # 挂载静态文件
-app.mount("/static", StaticFiles(directory="static"), name="static")
+app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
+
+# WebSocket连接管理器
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: List[WebSocket] = []
+
+    async def connect(self, websocket: WebSocket):
+        await websocket.accept()
+        self.active_connections.append(websocket)
+
+    def disconnect(self, websocket: WebSocket):
+        self.active_connections.remove(websocket)
+
+    async def broadcast(self, message: str):
+        for connection in self.active_connections:
+            try:
+                await connection.send_text(message)
+            except Exception:
+                continue
+
+manager = ConnectionManager()
+
+# 自定义日志处理器
+class WebSocketHandler(logging.Handler):
+    def emit(self, record):
+        try:
+            msg = self.format(record)
+            asyncio.create_task(manager.broadcast(msg))
+        except Exception:
+            self.handleError(record)
+
+# 添加WebSocket处理器
+websocket_handler = WebSocketHandler()
+websocket_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+logger.addHandler(websocket_handler)
 
 # 请求模型
 class QuestionRequest(BaseModel):
     question: str
-    user_id: str  # 添加用户ID字段
+    user_id: str
     return_context: bool = False
 
 # 响应模型
@@ -64,83 +104,60 @@ class ErrorResponse(BaseModel):
 
 # 全局 RAG 实例
 rag_instance = None
-
-# 全局实例
 workflow_manager = None
+event_bus = EventBus()
+
+async def forward_to_websocket(message: str):
+    """转发消息到WebSocket"""
+    try:
+        await manager.broadcast(message)
+    except Exception as e:
+        logger.error(f"转发到WebSocket失败: {str(e)}")
+
+# 订阅 EventBus 消息
+event_bus.subscribe(forward_to_websocket)
 
 @app.on_event("startup")
 async def startup_event():
     """服务启动时初始化系统"""
-    global workflow_manager, rag_instance
+    global rag_instance, workflow_manager
+    
     try:
-        # 从环境变量获取配置
+        # 配置参数
         DATA_PATH = "output/data_with_abstracts.json"
         API_KEY = "sk-c3b22834c96a4f368657ad8eafa1999f"
-        api_key = os.getenv("API_KEY", API_KEY)
-        if not api_key:
-            raise ValueError("未设置 API_KEY 环境变量")
-            
-        data_path = os.getenv("DATA_PATH", DATA_PATH)
         
-        # 初始化 RAG 系统
-        logger.info("初始化 RAG 系统...")
+        # 初始化RAG系统
         rag_instance = LLMRAG(
-            data_path=data_path,
-            api_key=api_key,
+            data_path=DATA_PATH,
+            api_key=API_KEY,
             initial_top_k=30,
             final_top_k=5
         )
         
-        # 初始化 OpenAI 客户端
-        llm_client = OpenAI(
-            api_key=api_key,
-            base_url="https://dashscope.aliyuncs.com/compatible-mode/v1"
-        )
-        
         # 初始化工作流管理器
-        workflow_manager = WorkflowManager(rag_instance, llm_client)
-        logger.info("系统初始化完成")
+        workflow_manager = WorkflowManager(rag_instance, event_bus)
         
+        logger.info("系统初始化完成")
     except Exception as e:
-        logger.error(f"初始化系统失败: {str(e)}")
+        logger.error(f"系统初始化失败: {str(e)}")
         raise
 
-@app.post("/api/ask", 
-         response_model=QuestionResponse,
-         responses={
-             200: {"description": "成功获取答案"},
-             500: {"model": ErrorResponse, "description": "服务器内部错误"},
-             400: {"model": ErrorResponse, "description": "请求参数错误"}
-         })
+@app.post("/api/ask", response_model=QuestionResponse)
 async def ask_question(request: QuestionRequest):
     """处理问答请求"""
     try:
-        if not workflow_manager:
-            raise HTTPException(
-                status_code=500,
-                detail="系统未正确初始化"
-            )
-            
-        # 记录请求
-        logger.info(f"用户 {request.user_id} 提问: {request.question}")
-        
-        # 使用工作流管理器处理消息
+        # 使用工作流管理器处理问题
         result = await workflow_manager.process_message(
             user_id=request.user_id,
-            message=request.question
+            message=request.question,
+            return_context=request.return_context
         )
         
-        # 构造响应
-        response = {
-            "answer": result["answer"],
-            "intent": result["intent"]
-        }
-        if request.return_context:
-            response["context"] = result.get("context")
-        if "rewritten_query" in result:
-            response["rewritten_query"] = result["rewritten_query"]
-            
-        return response
+        return QuestionResponse(
+            answer=result["answer"],
+            context=result.get("context")
+        )
         
     except Exception as e:
         logger.error(f"处理问题时出错: {str(e)}")
@@ -149,15 +166,15 @@ async def ask_question(request: QuestionRequest):
             detail=str(e)
         )
 
-@app.get("/api/health")
+@app.get("/health")
 async def health_check():
     """健康检查接口"""
     return {
         "status": "healthy",
-        "rag_initialized": rag_instance is not None
+        "rag_initialized": rag_instance is not None,
+        "workflow_initialized": workflow_manager is not None
     }
 
-# 添加首页路由
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
     """提供Web界面"""
@@ -165,6 +182,15 @@ async def home(request: Request):
         "index.html",
         {"request": request}
     )
+
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    await manager.connect(websocket)
+    try:
+        while True:
+            await websocket.receive_text()
+    except Exception:
+        manager.disconnect(websocket)
 
 def main():
     """主函数"""

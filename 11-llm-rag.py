@@ -6,6 +6,7 @@ from pathlib import Path
 import os
 import importlib.util
 import httpx
+import time
 
 # 动态导入向量处理器
 spec = importlib.util.spec_from_file_location("vector_processor", "7-1.vector-with-abstract.py")
@@ -149,8 +150,12 @@ class LLMRAG:
         Returns:
             包含答案和可选上下文的字典
         """
+        import time
+        start_total = time.time()
+        
         # 1. 检索相关文档
-        logger.info("开始检索相关文档...")
+        logger.info(f"开始检索相关文档，搜索参数: top_k={self.initial_top_k}, final_top_k={self.final_top_k}")
+        search_start = time.time()
         search_results = search_with_rerank(
             query=query,
             hybrid_searcher=self.hybrid_searcher,
@@ -158,15 +163,28 @@ class LLMRAG:
             initial_top_k=self.initial_top_k,
             final_top_k=self.final_top_k
         )
+        search_time = time.time() - search_start
         
+        logger.info(f"检索完成，耗时 {search_time:.2f}秒，找到 {len(search_results)} 条结果")
+
         # 2. 格式化上下文
+        logger.info("开始格式化上下文...")
+        format_start = time.time()
         context = self._format_context(search_results)
+        format_time = time.time() - format_start
+        logger.info(f"格式化完成，耗时 {format_time:.2f}秒，上下文长度: {len(context)} 字符")
+        logger.info(f"格式化后的上下文预览:\n{context[:200]}...")
         
         # 3. 生成答案
-        logger.info("生成答案...")
+        logger.info("开始生成答案...")
+        generate_start = time.time()
         answer = self._generate_answer(query, context)
+        generate_time = time.time() - generate_start
         
-        # 4. 返回结果
+        total_time = time.time() - start_total
+        logger.info(f"答案生成完成，耗时 {generate_time:.2f}秒")
+        logger.info(f"总耗时: {total_time:.2f}秒 (检索: {search_time:.2f}秒, 格式化: {format_time:.2f}秒, 生成: {generate_time:.2f}秒)")
+        
         result = {"answer": answer}
         if return_context:
             result["context"] = context

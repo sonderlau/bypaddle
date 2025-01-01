@@ -4,6 +4,7 @@ import json
 from datetime import datetime
 from openai import OpenAI
 import importlib.util
+from event_bus import EventBus  # Import EventBus
 
 # 动态导入 LLMRAG
 spec = importlib.util.spec_from_file_location("llm_rag", "11-llm-rag.py")
@@ -198,12 +199,15 @@ class WorkflowManager:
         self.handbook_processor = HandbookQueryProcessor(llm_client)
         self.chat_manager = ChatManager(llm_client)
         self.rag_system = rag_system
+        self.event_bus = EventBus()  # 使用单例模式的 EventBus
         
     async def process_message(self, user_id: str, message: str) -> Dict[str, Any]:
         """处理用户消息"""
         try:
             # 获取历史记录用于判断上下文
             history = self.conversation_manager.get_history(user_id)
+            self.event_bus.publish("[状态] 开始处理用户消息")
+            self.event_bus.publish(f"[信息] 用户ID: {user_id}")
             
             # 1. 添加用户消息到历史
             # 如果上一条是handbook相关，这条简短的跟随提问也应该被标记为handbook
@@ -212,51 +216,68 @@ class WorkflowManager:
                 last_message.get('intent') == 'handbook' and 
                 len(message.strip()) < 20):  # 短问题可能是跟随提问
                 initial_intent = 'handbook'
+                self.event_bus.publish("[信息] 检测到跟随提问")
             else:
                 initial_intent = None
                 
             self.conversation_manager.add_message(user_id, "user", message, intent=initial_intent)
             
             # 2. 判断是否是学生手册相关查询
+            self.event_bus.publish("[状态] 正在判断问题类型")
+            self.event_bus.publish(f"[信息] 正在分析问题: {message}")
             is_handbook_query = (initial_intent == 'handbook' or 
                                await self.handbook_processor.is_handbook_related(message))
             
             if is_handbook_query:
                 # 3a. 处理学生手册相关查询
+                self.event_bus.publish("[状态] 正在处理手册相关查询")
                 history = self.conversation_manager.get_history(user_id)
+                self.event_bus.publish("[信息] 正在根据历史对话改写问题")
                 rewritten_query = await self.handbook_processor.rewrite_query(message, history)
+                self.event_bus.publish(f"[信息] 改写后的问题: {rewritten_query}")
                 
+                self.event_bus.publish("[状态] 正在搜索相关内容")
                 # 直接使用LLMRAG的功能进行检索和回答
                 result = self.rag_system.answer_question(
                     query=rewritten_query,
                     return_context=True
                 )
+                self.event_bus.publish("[信息] 已找到相关内容")
                 
+                self.event_bus.publish("[状态] 正在生成回答")
                 # 记录回复，确保标记为handbook
                 self.conversation_manager.add_message(
                     user_id, "assistant", result["answer"], intent="handbook"
                 )
                 
+                self.event_bus.publish("[状态] 处理完成")
+                self.event_bus.publish("[信息] 回答生成完毕")
                 return {
+                    "intent": "handbook",
                     "answer": result["answer"],
                     "context": result.get("context"),
-                    "intent": "handbook",
                     "rewritten_query": rewritten_query
                 }
             else:
                 # 3b. 处理一般对话
+                self.event_bus.publish("[状态] 正在处理一般对话")
+                self.event_bus.publish("[信息] 转入闲聊模式")
                 response = await self.chat_manager.handle_general_chat(message)
                 self.conversation_manager.add_message(
                     user_id, "assistant", response, intent="chat"
                 )
                 
+                self.event_bus.publish("[状态] 处理完成")
+                self.event_bus.publish("[信息] 回答生成完毕")
                 return {
+                    "intent": "chat",
                     "answer": response,
                     "context": None,
-                    "intent": "chat"
                 }
                 
         except Exception as e:
+            self.event_bus.publish("[状态] 处理出错")
+            self.event_bus.publish(f"[错误] {str(e)}")
             logger.error(f"处理消息时出错: {str(e)}")
             raise
 
@@ -286,7 +307,6 @@ async def main():
         
         # 测试用例
         test_cases = [
-
             
             # 连续对话测试
             "奖学金有哪些类型？",

@@ -1,0 +1,43 @@
+2025-01-01 17:36:19,356 - INFO - 初始化 RAG 系统...
+2025-01-01 17:36:19,356 - INFO - 初始化 RAG 系统...
+2025-01-01 17:36:19,439 - INFO - 5 changes detected
+2025-01-01 17:36:19,443 - INFO - 初始化向量处理器，使用模型: BAAI/bge-large-zh-v1.5
+2025-01-01 17:36:19,443 - INFO - 初始化向量处理器，使用模型: BAAI/bge-large-zh-v1.5
+2025-01-01 17:36:19,819 - INFO - 1 change detected
+2025-01-01 17:36:20,219 - INFO - 1 change detected
+2025-01-01 17:36:20,607 - INFO - 1 change detected
+2025-01-01 17:36:20,995 - INFO - 1 change detected
+2025-01-01 17:36:21,380 - INFO - 1 change detected
+2025-01-01 17:36:21,750 - INFO - 1 change detected
+2025-01-01 17:36:22,120 - INFO - 1 change detected
+2025-01-01 17:36:22,497 - INFO - 使用设备: cpu
+2025-01-01 17:36:22,497 - INFO - 使用设备: cpu
+2025-01-01 17:36:22,533 - INFO - Anonymized telemetry enabled. See                     https://docs.trychroma.com/telemetry for more information.
+2025-01-01 17:36:22,533 - INFO - Anonymized telemetry enabled. See                     https://docs.trychroma.com/telemetry for more information.
+2025-01-01 17:36:22,714 - INFO - 初始化检索组件...
+2025-01-01 17:36:22,714 - INFO - 初始化检索组件...
+2025-01-01 17:36:24,870 - INFO - Reranker使用设备: cpu
+2025-01-01 17:36:24,870 - INFO - Reranker使用设备: cpu
+2025-01-01 17:36:24,910 - INFO - 系统初始化完成
+2025-01-01 17:36:24,910 - INFO - 系统初始化完成
+2025-01-01 17:37:46,783 - INFO - 初始化 RAG 系统...
+2025-01-01 17:37:46,871 - INFO - 初始化向量处理器，使用模型: BAAI/bge-large-zh-v1.5
+2025-01-01 17:37:50,641 - INFO - 使用设备: cpu
+2025-01-01 17:37:50,680 - INFO - Anonymized telemetry enabled. See                     https://docs.trychroma.com/telemetry for more information.
+2025-01-01 17:37:50,861 - INFO - 初始化检索组件...
+2025-01-01 17:37:52,813 - INFO - Reranker使用设备: cpu
+2025-01-01 17:37:52,847 - INFO - 系统初始化完成
+2025-01-01 17:38:01,068 - INFO - 正在关闭服务...
+2025-01-01 17:38:10,858 - INFO - 初始化 RAG 系统...
+2025-01-01 17:38:10,943 - INFO - 初始化向量处理器，使用模型: BAAI/bge-large-zh-v1.5
+2025-01-01 17:38:13,573 - INFO - 使用设备: cpu
+2025-01-01 17:38:13,615 - INFO - Anonymized telemetry enabled. See                     https://docs.trychroma.com/telemetry for more information.
+2025-01-01 17:38:13,821 - INFO - 初始化检索组件...
+2025-01-01 17:38:16,137 - INFO - Reranker使用设备: cpu
+2025-01-01 17:38:16,184 - INFO - 系统初始化完成
+2025-01-01 17:38:26,951 - INFO - 用户 user-1735724306948 提问: 有奖学金吗
+2025-01-01 17:38:27,580 - INFO - HTTP Request: POST https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions "HTTP/1.1 200 OK"
+2025-01-01 17:38:28,816 - INFO - HTTP Request: POST https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions "HTTP/1.1 200 OK"
+2025-01-01 17:38:28,820 - INFO - 原始查询: 有奖学金吗
+2025-01-01 17:38:28,821 - INFO - 改写后查询: 学生手册中有哪些奖学金相关的规定？包括国家奖学金、国家励志奖学金、省政府奖学金以及学生奖学金评审办法等。
+2025-01-01 17:38:28,823 - INFO - 开始检索相关文档，搜索参数: top_k=30, final_top_k=5
