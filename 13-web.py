@@ -12,6 +12,7 @@ from fastapi.responses import HTMLResponse
 from openai import OpenAI
 import asyncio
 from event_bus import EventBus
+import httpx
 
 # 获取项目根目录的绝对路径
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -77,8 +78,14 @@ class WebSocketHandler(logging.Handler):
     def emit(self, record):
         try:
             msg = self.format(record)
-            asyncio.create_task(manager.broadcast(msg))
-        except Exception:
+            message = {
+                "type": "log",
+                "message": msg
+            }
+            import json
+            asyncio.create_task(manager.broadcast(json.dumps(message)))
+        except Exception as e:
+            logger.error(f"Error in WebSocket handler: {str(e)}")
             self.handleError(record)
 
 # 添加WebSocket处理器
@@ -125,7 +132,15 @@ async def startup_event():
     try:
         # 配置参数
         DATA_PATH = "output/data_with_abstracts.json"
-        API_KEY = "sk-c3b22834c96a4f368657ad8eafa1999f"
+        API_KEY="sk-c3b22834c96a4f368657ad8eafa1999f"
+        
+        # 初始化OpenAI客户端
+        http_client = httpx.Client()
+        llm_client = OpenAI(
+            api_key=API_KEY,
+            base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+            http_client=http_client
+        )
         
         # 初始化RAG系统
         rag_instance = LLMRAG(
@@ -136,7 +151,7 @@ async def startup_event():
         )
         
         # 初始化工作流管理器
-        workflow_manager = WorkflowManager(rag_instance, event_bus)
+        workflow_manager = WorkflowManager(rag_instance, llm_client)
         
         logger.info("系统初始化完成")
     except Exception as e:
@@ -150,13 +165,16 @@ async def ask_question(request: QuestionRequest):
         # 使用工作流管理器处理问题
         result = await workflow_manager.process_message(
             user_id=request.user_id,
-            message=request.question,
-            return_context=request.return_context
+            message=request.question
         )
         
+        # 如果结果是字符串，转换为字典格式
+        if isinstance(result, str):
+            result = {"answer": result, "context": None}
+        
         return QuestionResponse(
-            answer=result["answer"],
-            context=result.get("context")
+            answer=result["answer"] if isinstance(result, dict) else result,
+            context=result.get("context") if isinstance(result, dict) else None
         )
         
     except Exception as e:
@@ -190,7 +208,10 @@ async def websocket_endpoint(websocket: WebSocket):
         while True:
             await websocket.receive_text()
     except Exception:
+        logger.error("WebSocket connection closed")
+    finally:
         manager.disconnect(websocket)
+        logger.info("WebSocket connection cleaned up")
 
 def main():
     """主函数"""
