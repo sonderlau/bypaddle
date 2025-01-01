@@ -1,0 +1,206 @@
+from typing import List, Dict, Any
+import logging
+import json
+from openai import OpenAI
+from pathlib import Path
+import os
+import importlib.util
+
+# 动态导入向量处理器
+spec = importlib.util.spec_from_file_location("vector_processor", "7-1.vector-with-abstract.py")
+vector_module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(vector_module)
+VectorProcessor = vector_module.VectorProcessor
+
+# 动态导入RAG重排序组件
+spec2 = importlib.util.spec_from_file_location("rag_reranker", "10-2.rag-reranker.py")
+rag_module = importlib.util.module_from_spec(spec2)
+spec2.loader.exec_module(rag_module)
+HybridSearcher = rag_module.HybridSearcher
+Reranker = rag_module.Reranker
+search_with_rerank = rag_module.search_with_rerank
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+class LLMRAG:
+    def __init__(
+        self, 
+        data_path: str,
+        api_key: str,
+        model_name: str = "qwen-long",
+        initial_top_k: int = 10,
+        final_top_k: int = 3
+    ):
+        """初始化LLM-RAG系统
+        
+        Args:
+            data_path: 包含文档内容的JSON文件路径
+            api_key: DashScope API密钥
+            model_name: 使用的模型名称
+            initial_top_k: 混合检索的初始召回数量
+            final_top_k: 重排序后保留的文档数量
+        """
+        self.model_name = model_name
+        self.initial_top_k = initial_top_k
+        self.final_top_k = final_top_k
+        
+        # 初始化OpenAI客户端
+        self.client = OpenAI(
+            api_key=api_key,
+            base_url="https://dashscope.aliyuncs.com/compatible-mode/v1"
+        )
+        
+        # 初始化向量处理器
+        self.vector_processor = VectorProcessor()
+        
+        # 加载数据
+        if not os.path.exists(data_path):
+            raise FileNotFoundError(f"数据文件不存在：{data_path}")
+        self.data_path = data_path
+        
+        # 初始化检索组件
+        self._initialize_search_components()
+        
+    def _initialize_search_components(self):
+        """初始化检索相关的组件"""
+        logger.info("初始化检索组件...")
+        
+        # 准备文档块
+        chunks = self.vector_processor.prepare_chunks(self.data_path)
+        
+        # 初始化混合搜索器
+        self.hybrid_searcher = HybridSearcher(self.vector_processor)
+        self.hybrid_searcher.prepare_bm25(chunks)
+        
+        # 初始化重排序器
+        self.reranker = Reranker()
+        
+    def _format_context(self, results: List[Dict[str, Any]]) -> str:
+        """将检索结果格式化为上下文"""
+        context_parts = []
+        
+        for result in results:
+            chunk = result['chunk']
+            # 添加章节信息
+            section_info = f"【{chunk['section']}】"
+            if chunk['section_abstract']:
+                section_info += f"\n章节概述：{chunk['section_abstract']}"
+            
+            # 添加具体内容
+            content = f"\n具体内容：{chunk['current_content']}"
+            
+            # 合并当前文档块的信息
+            context_parts.append(f"{section_info}{content}")
+            
+        return "\n\n".join(context_parts)
+        
+    def _generate_answer(self, query: str, context: str) -> str:
+        """使用LLM生成答案
+        
+        Args:
+            query: 用户问题
+            context: 检索到的相关上下文
+            
+        Returns:
+            生成的答案
+        """
+        prompt = f"""请基于以下参考信息回答用户的问题。要求：
+1. 答案必须准确，与参考信息保持一致
+2. 如果参考信息不足以完整回答问题，请明确指出
+3. 合理组织答案结构，适当分点说明
+4. 可以直接引用原文内容，注意语言流畅
+5. 如果有页码，请在答案中说明可以查阅手册的页码
+
+参考信息：
+==========
+{context}
+==========
+
+用户问题：{query}
+
+请生成解答："""
+
+        logger.info(f"生成答案，使用模型：{self.model_name}")
+        response = self.client.chat.completions.create(
+            model=self.model_name,  
+            messages=[{
+                "role": "user",
+                "content": prompt
+            }],
+            temperature=0.2
+        )
+        
+        return response.choices[0].message.content.strip()
+        
+    def answer_question(self, query: str, return_context: bool = False) -> Dict[str, Any]:
+        """回答用户问题
+        
+        Args:
+            query: 用户问题
+            return_context: 是否返回检索到的上下文
+            
+        Returns:
+            包含答案和可选上下文的字典
+        """
+        # 1. 检索相关文档
+        logger.info("开始检索相关文档...")
+        search_results = search_with_rerank(
+            query=query,
+            hybrid_searcher=self.hybrid_searcher,
+            reranker=self.reranker,
+            initial_top_k=self.initial_top_k,
+            final_top_k=self.final_top_k
+        )
+        
+        # 2. 格式化上下文
+        context = self._format_context(search_results)
+        
+        # 3. 生成答案
+        logger.info("生成答案...")
+        answer = self._generate_answer(query, context)
+        
+        # 4. 返回结果
+        result = {"answer": answer}
+        if return_context:
+            result["context"] = context
+        return result
+
+def main():
+    # 配置
+    DATA_PATH = "output/data_with_abstracts.json"
+    API_KEY="sk-c3b22834c96a4f368657ad8eafa1999f"
+  # 替换为实际的API密钥
+    
+    # 初始化RAG系统
+    rag = LLMRAG(
+        data_path=DATA_PATH,
+        api_key=API_KEY
+    )
+    
+    # 测试问题
+    test_queries = [
+        "学籍异动包括哪些情况？",
+        "学生申请休学的流程是什么？",
+        "如何处理学生考试作弊？",
+        "学生证补办流程",
+        "奖学金评定标准"
+    ]
+    
+    # 测试回答
+    for query in test_queries:
+        print(f"\n问题：{query}")
+        try:
+            result = rag.answer_question(query, return_context=True)
+            print("\n答案：")
+            print(result["answer"])
+            print("\n参考上下文：")
+            print(result["context"])
+        except Exception as e:
+            logger.error(f"处理问题时出错：{str(e)}")
+            
+if __name__ == "__main__":
+    main()
