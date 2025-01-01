@@ -25,6 +25,29 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
+
+# 获取根日志记录器
+root_logger = logging.getLogger()
+
+# 添加WebSocket处理器到根日志记录器
+class WebSocketHandler(logging.Handler):
+    def emit(self, record):
+        try:
+            msg = self.format(record)
+            message = {
+                "type": "log",
+                "message": msg
+            }
+            import json
+            asyncio.create_task(manager.broadcast(json.dumps(message)))
+        except Exception as e:
+            root_logger.error(f"Error in WebSocket handler: {str(e)}")
+            self.handleError(record)
+
+websocket_handler = WebSocketHandler()
+websocket_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+root_logger.addHandler(websocket_handler)
+
 logger = logging.getLogger(__name__)
 
 # 动态导入 LLMRAG
@@ -72,26 +95,6 @@ class ConnectionManager:
                 continue
 
 manager = ConnectionManager()
-
-# 自定义日志处理器
-class WebSocketHandler(logging.Handler):
-    def emit(self, record):
-        try:
-            msg = self.format(record)
-            message = {
-                "type": "log",
-                "message": msg
-            }
-            import json
-            asyncio.create_task(manager.broadcast(json.dumps(message)))
-        except Exception as e:
-            logger.error(f"Error in WebSocket handler: {str(e)}")
-            self.handleError(record)
-
-# 添加WebSocket处理器
-websocket_handler = WebSocketHandler()
-websocket_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
-logger.addHandler(websocket_handler)
 
 # 请求模型
 class QuestionRequest(BaseModel):

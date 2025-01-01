@@ -210,19 +210,48 @@ class WorkflowManager:
             # 获取历史记录用于判断上下文
             history = self.conversation_manager.get_history(user_id)
             
-            # 处理问题
-            logger.info("[状态] 开始分析问题")
-            answer, context = await self.process_question(message, return_context=True)
+            # 判断是否是学生手册相关查询
+            logger.info("[状态] 正在判断问题类型")
+            is_handbook_query = await self.handbook_processor.is_handbook_related(message)
             
-            # 更新历史记录
-            logger.info("[状态] 更新对话历史")
-            self.conversation_manager.add_to_history(user_id, message, answer)
-            
-            logger.info("[状态] 处理完成")
-            return {
-                "answer": answer,
-                "context": context
-            }
+            if is_handbook_query:
+                # 处理学生手册相关查询
+                logger.info("[状态] 正在处理手册相关查询")
+                rewritten_query = await self.handbook_processor.rewrite_query(message, history)
+                logger.info(f"[信息] 改写后的问题: {rewritten_query}")
+                
+                logger.info("[状态] 正在搜索相关内容")
+                result = self.rag_system.answer_question(
+                    query=rewritten_query,
+                    return_context=True
+                )
+                
+                logger.info("[状态] 正在生成回答")
+                self.conversation_manager.add_message(
+                    user_id, "assistant", result["answer"], intent="handbook"
+                )
+                
+                logger.info("[状态] 处理完成")
+                return {
+                    "intent": "handbook",
+                    "answer": result["answer"],
+                    "context": result.get("context"),
+                    "rewritten_query": rewritten_query
+                }
+            else:
+                # 处理一般对话
+                logger.info("[状态] 正在处理一般对话")
+                response = await self.chat_manager.handle_general_chat(message)
+                self.conversation_manager.add_message(
+                    user_id, "assistant", response, intent="chat"
+                )
+                
+                logger.info("[状态] 处理完成")
+                return {
+                    "intent": "chat",
+                    "answer": response,
+                    "context": None
+                }
             
         except Exception as e:
             logger.error(f"[错误] 处理消息时出错: {str(e)}")
