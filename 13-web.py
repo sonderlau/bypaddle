@@ -39,14 +39,31 @@ class WebSocketHandler(logging.Handler):
                 "message": msg
             }
             import json
-            asyncio.create_task(manager.broadcast(json.dumps(message)))
+            # Get the running event loop if it exists, otherwise create a new one
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+            
+            # Run the broadcast coroutine
+            if loop.is_running():
+                loop.create_task(manager.broadcast(json.dumps(message)))
+            else:
+                loop.run_until_complete(manager.broadcast(json.dumps(message)))
         except Exception as e:
             import sys
             print(f"Error in WebSocket handler: {str(e)}", file=sys.stderr)
             self.handleError(record)
 
+class HTTPFilter(logging.Filter):
+    def filter(self, record):
+        # Filter out HTTP request logs containing dashscope.aliyuncs.com
+        return "dashscope.aliyuncs.com" not in record.getMessage()
+
 websocket_handler = WebSocketHandler()
 websocket_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+websocket_handler.addFilter(HTTPFilter())  # Add the filter
 root_logger.addHandler(websocket_handler)
 
 logger = logging.getLogger(__name__)
