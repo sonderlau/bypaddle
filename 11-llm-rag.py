@@ -169,6 +169,71 @@ class LLMRAG:
             result["context"] = context
         return result
 
+    def search_similar(self, query: str, top_k: int = 3) -> List[Dict[str, Any]]:
+        """搜索相似内容"""
+        try:
+            query_embedding = self._create_embedding(query)
+            collection = self.chroma_client.get_collection("document_embeddings")
+            
+            results = collection.query(
+                query_embeddings=[query_embedding],
+                n_results=top_k
+            )
+            
+            similar_chunks = []
+            for i in range(len(results['documents'][0])):
+                similar_chunks.append({
+                    'content': results['documents'][0][i],
+                    'metadata': results['metadatas'][0][i],
+                    'similarity_score': float(results['distances'][0][i])
+                })
+            
+            return similar_chunks
+            
+        except Exception as e:
+            logger.error(f"搜索过程中出错: {str(e)}")
+            raise
+
+    def generate_answer(self, query: str) -> str:
+        """生成回答"""
+        try:
+            # 搜索相关内容
+            similar_chunks = self.search_similar(query, top_k=3)
+            
+            # 构建提示
+            context_texts = []
+            page_references = []  # 新增：用于存储页码引用
+            
+            for chunk in similar_chunks:
+                content = chunk['content']
+                page_number = chunk['metadata']['page_number']
+                context_texts.append(content)
+                page_references.append(f"第{page_number}页")  # 新增：收集页码信息
+            
+            context = "\n\n".join(context_texts)
+            pages_info = "、".join(page_references)  # 新增：组合页码信息
+            
+            prompt = f"""请基于以下内容回答问题。如果无法从内容中找到答案，请明确说明。
+
+内容：
+{context}
+
+问题：{query}
+
+请提供准确、简洁的回答。在回答末尾注明参考页码。"""
+
+            # 调用 LLM 生成回答
+            response = self.llm(prompt)
+            
+            # 在回答末尾添加页码引用
+            final_answer = f"{response}\n\n参考来源：{pages_info}"
+            
+            return final_answer
+            
+        except Exception as e:
+            logger.error(f"生成回答时出错: {str(e)}")
+            return f"抱歉，生成回答时出现错误: {str(e)}"
+
 def main():
     # 配置
     DATA_PATH = "output/data_with_abstracts.json"
