@@ -13,6 +13,7 @@ from openai import OpenAI
 import asyncio
 from event_bus import EventBus
 import httpx
+import json
 
 # 获取项目根目录的绝对路径
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -36,25 +37,44 @@ class WebSocketHandler(logging.Handler):
             msg = self.format(record)
             message = {
                 "type": "log",
-                "message": msg
+                "message": msg,
+                "status": self.get_status_type(msg)
             }
-            import json
-            # Get the running event loop if it exists, otherwise create a new one
+            
+            # 获取或创建事件循环
             try:
                 loop = asyncio.get_running_loop()
             except RuntimeError:
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
             
-            # Run the broadcast coroutine
+            # 使用 run_coroutine_threadsafe 来安全地运行异步代码
             if loop.is_running():
-                loop.create_task(manager.broadcast(json.dumps(message)))
+                asyncio.run_coroutine_threadsafe(
+                    manager.broadcast(json.dumps(message)),
+                    loop
+                )
             else:
-                loop.run_until_complete(manager.broadcast(json.dumps(message)))
+                loop.run_until_complete(
+                    manager.broadcast(json.dumps(message))
+                )
+                
         except Exception as e:
             import sys
             print(f"Error in WebSocket handler: {str(e)}", file=sys.stderr)
             self.handleError(record)
+
+    def get_status_type(self, msg):
+        # 状态类型判断保持不变
+        if "[状态]" in msg:
+            return "status"
+        elif "[信息]" in msg:
+            return "info"
+        elif "ERROR" in msg or "[错误]" in msg:
+            return "error"
+        elif "HTTP Request:" in msg:
+            return "http"
+        return "default"
 
 class HTTPFilter(logging.Filter):
     def filter(self, record):
@@ -97,20 +117,33 @@ app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), na
 class ConnectionManager:
     def __init__(self):
         self.active_connections: List[WebSocket] = []
+        self.lock = asyncio.Lock()  # 添加锁来保护连接列表
 
     async def connect(self, websocket: WebSocket):
         await websocket.accept()
-        self.active_connections.append(websocket)
+        async with self.lock:
+            self.active_connections.append(websocket)
+            logger.info("[状态] 新的WebSocket连接已建立")
 
-    def disconnect(self, websocket: WebSocket):
-        self.active_connections.remove(websocket)
+    async def disconnect(self, websocket: WebSocket):
+        async with self.lock:
+            if websocket in self.active_connections:
+                self.active_connections.remove(websocket)
+                logger.info("[状态] WebSocket连接已断开")
 
     async def broadcast(self, message: str):
-        for connection in self.active_connections:
-            try:
-                await connection.send_text(message)
-            except Exception:
-                continue
+        async with self.lock:
+            dead_connections = []
+            for connection in self.active_connections:
+                try:
+                    await connection.send_text(message)
+                except Exception as e:
+                    logger.error(f"[错误] 发送WebSocket消息失败: {str(e)}")
+                    dead_connections.append(connection)
+            
+            # 清理失效的连接
+            for dead in dead_connections:
+                self.active_connections.remove(dead)
 
 manager = ConnectionManager()
 
@@ -183,21 +216,27 @@ async def startup_event():
 async def ask_question(request: QuestionRequest):
     """处理问答请求"""
     try:
-        # 使用工作流管理器处理问题
+        # 立即发送开始处理的状态
+        await manager.broadcast(json.dumps({
+            "type": "status",
+            "message": "开始处理您的问题..."
+        }))
+        
         result = await workflow_manager.process_message(
             user_id=request.user_id,
             message=request.question
         )
         
-        # 如果结果是字符串，转换为字典格式
-        if isinstance(result, str):
-            result = {"answer": result, "context": None}
+        # 发送完成状态
+        await manager.broadcast(json.dumps({
+            "type": "status",
+            "message": "处理完成"
+        }))
         
         return QuestionResponse(
             answer=result["answer"] if isinstance(result, dict) else result,
             context=result.get("context") if isinstance(result, dict) else None
         )
-        
     except Exception as e:
         logger.error(f"处理问题时出错: {str(e)}")
         raise HTTPException(
@@ -228,11 +267,10 @@ async def websocket_endpoint(websocket: WebSocket):
     try:
         while True:
             await websocket.receive_text()
-    except Exception:
-        logger.error("WebSocket connection closed")
+    except Exception as e:
+        logger.error(f"[错误] WebSocket连接出错: {str(e)}")
     finally:
-        manager.disconnect(websocket)
-        logger.info("WebSocket connection cleaned up")
+        await manager.disconnect(websocket)
 
 def main():
     """主函数"""

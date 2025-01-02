@@ -219,7 +219,7 @@
 
             // 显示加载状态
             document.getElementById('loading').style.display = 'block';
-
+            
             try {
                 const response = await fetch('/api/ask', {
                     method: 'POST',
@@ -229,7 +229,7 @@
                     body: JSON.stringify({
                         question: question,
                         return_context: true,
-                        user_id: 'user-' + Date.now()  // 添加用户ID
+                        user_id: 'user-' + Date.now()
                     })
                 });
 
@@ -268,60 +268,133 @@
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
         }
 
-        // WebSocket连接
-        const ws = new WebSocket(`ws://${window.location.host}/ws`);
-        
-        ws.onmessage = function(event) {
-            const data = JSON.parse(event.data);
-            if (data.type === 'chat') {
-                addMessage(data.message, false, data.context);
-            } else if (data.type === 'log') {
-                addLogEntry(data.message);
-            }
-        };
+        // WebSocket连接管理
+        let ws;
+        let reconnectAttempts = 0;
+        const MAX_RECONNECT_ATTEMPTS = 5;
 
+        function setupWebSocket() {
+            ws = new WebSocket(`ws://${window.location.host}/ws`);
+            
+            ws.onopen = function() {
+                console.log("WebSocket连接已建立");
+                reconnectAttempts = 0;  // 重置重连计数
+                addLogEntry({ 
+                    type: "status", 
+                    message: "系统已连接",
+                    status: "status" 
+                });
+            };
+            
+            ws.onmessage = function(event) {
+                try {
+                    const data = JSON.parse(event.data);
+                    if (data.type === 'chat') {
+                        addMessage(data.message, false, data.context);
+                    } else if (data.type === 'log' || data.type === 'status') {
+                        addLogEntry(data);
+                    }
+                } catch (error) {
+                    console.error("处理WebSocket消息时出错:", error);
+                }
+            };
+            
+            ws.onclose = function() {
+                console.log("WebSocket连接已关闭");
+                if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+                    reconnectAttempts++;
+                    console.log(`尝试重新连接... (${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`);
+                    setTimeout(setupWebSocket, 3000);  // 3秒后重试
+                }
+            };
+            
+            ws.onerror = function(error) {
+                console.error("WebSocket错误:", error);
+            };
+        }
+
+        // 初始化WebSocket连接
+        setupWebSocket();
+
+        // 修改addLogEntry函数，增加错误处理和持久化
         function addLogEntry(message) {
-            const logContent = document.getElementById('logContent');
-            const entry = document.createElement('div');
-            
-            // 解析时间戳
-            const timeMatch = message.match(/^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3})/);
-            if (timeMatch) {
-                const timeEntry = document.createElement('div');
-                timeEntry.className = 'log-entry time';
-                timeEntry.textContent = timeMatch[1];
-                logContent.appendChild(timeEntry);
-                message = message.substring(timeMatch[0].length);
-            }
-            
-            // 根据消息类型设置样式
-            if (message.includes('HTTP Request:')) {
-                entry.className = 'log-entry http';
-            } else if (message.includes('[状态]')) {
-                entry.className = 'log-entry status';
-            } else if (message.includes('[信息]')) {
-                entry.className = 'log-entry info';
-            } else if (message.includes('[错误]') || message.includes('ERROR')) {
-                entry.className = 'log-entry error';
-            } else if (message.includes('INFO')) {
-                entry.className = 'log-entry info';
-            } else {
-                entry.className = 'log-entry';
-            }
-            
-            // 清理日志消息
-            message = message.replace(/^(\s*-\s*(INFO|ERROR|WARNING)\s*-\s*)/, '');
-            entry.textContent = message;
-            
-            logContent.appendChild(entry);
-            logContent.scrollTop = logContent.scrollHeight;
-            
-            // 如果日志条目太多，删除旧的
-            const maxEntries = 1000;
-            while (logContent.children.length > maxEntries) {
-                logContent.removeChild(logContent.firstChild);
+            try {
+                const logContent = document.getElementById('logContent');
+                if (!logContent) {
+                    console.error("找不到日志容器元素");
+                    return;
+                }
+
+                // 解析消息数据
+                const data = typeof message === 'string' ? { message } : message;
+                const text = data.message;
+                
+                // 时间戳处理
+                const timeMatch = text.match(/^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3})/);
+                if (timeMatch) {
+                    const timeEntry = document.createElement('div');
+                    timeEntry.className = 'log-entry time';
+                    timeEntry.textContent = timeMatch[1];
+                    logContent.appendChild(timeEntry);
+                    message = text.substring(timeMatch[0].length);
+                }
+
+                // 创建日志条目
+                const entry = document.createElement('div');
+                entry.className = `log-entry ${data.status || 'default'}`;
+                
+                // 清理日志消息
+                const cleanedMessage = text.replace(/^(\s*-\s*(INFO|ERROR|WARNING)\s*-\s*)/, '');
+                entry.textContent = cleanedMessage;
+                
+                // 添加动画效果
+                entry.style.animation = 'fadeIn 0.3s ease-in';
+                
+                // 添加到容器
+                logContent.appendChild(entry);
+                
+                // 自动滚动到底部
+                logContent.scrollTop = logContent.scrollHeight;
+                
+                // 限制日志数量，保留最新的100条
+                const maxLogs = 100;
+                while (logContent.children.length > maxLogs) {
+                    logContent.removeChild(logContent.firstChild);
+                }
+            } catch (error) {
+                console.error("添加日志条目时出错:", error);
             }
         }
+
+        // 修改CSS样式，确保日志容器始终可见
+        const additionalStyles = `
+            .log-container {
+                display: flex !important;  /* 强制显示 */
+                flex-direction: column;
+                min-height: 200px;
+                max-height: calc(100vh - 100px);
+                opacity: 1 !important;  /* 强制可见 */
+            }
+            
+            .log-content {
+                flex: 1;
+                overflow-y: auto;
+                min-height: 100px;
+                opacity: 1 !important;
+            }
+            
+            .log-entry {
+                opacity: 1;
+                transition: opacity 0.3s ease-in;
+                margin-bottom: 4px;
+                word-break: break-word;
+            }
+        `;
+
+        // 添加样式到页面
+        const styleSheet = document.createElement("style");
+        styleSheet.textContent = additionalStyles;
+        document.head.appendChild(styleSheet);
     </script>
 </body>
 </html>

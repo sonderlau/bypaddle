@@ -5,6 +5,7 @@ from datetime import datetime
 from openai import OpenAI
 import importlib.util
 from event_bus import EventBus  # Import EventBus
+import asyncio
 
 # 动态导入 LLMRAG
 spec = importlib.util.spec_from_file_location("llm_rag", "11-llm-rag.py")
@@ -61,12 +62,14 @@ class HandbookQueryProcessor:
 请只返回"yes"或"no"："""
 
         try:
+            await asyncio.sleep(0)  # 让出控制权
             response = self.llm_client.chat.completions.create(
                 model="qwen-long",
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.1,
-                max_tokens=10  # 限制输出长度，只需要yes/no
+                max_tokens=10
             )
+            await asyncio.sleep(0)  # 让出控制权
             return "yes" in response.choices[0].message.content.strip().lower()
         except Exception as e:
             logger.error(f"判断问题相关性时出错: {str(e)}")
@@ -111,12 +114,14 @@ class HandbookQueryProcessor:
 只返回改写后的查询语句："""
 
         try:
+            await asyncio.sleep(0)  # 让出控制权
             response = self.llm_client.chat.completions.create(
                 model="qwen-long",
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.3,
                 max_tokens=200
             )
+            await asyncio.sleep(0)  # 让出控制权
             rewritten = response.choices[0].message.content.strip()
             logger.info(f"原始查询: {query}")
             logger.info(f"改写后查询: {rewritten}")
@@ -205,26 +210,28 @@ class WorkflowManager:
         """处理用户消息"""
         try:
             logger.info("[状态] 开始处理用户消息")
-            logger.info(f"用户ID: {user_id}, 消息: {message}")
+            await asyncio.sleep(0)  # 让出控制权
             
-            # 获取历史记录用于判断上下文
             history = self.conversation_manager.get_history(user_id)
-            
-            # 判断是否是学生手册相关查询
             logger.info("[状态] 正在判断问题类型")
+            await asyncio.sleep(0)  # 让出控制权
+            
             is_handbook_query = await self.handbook_processor.is_handbook_related(message)
             
             if is_handbook_query:
-                # 处理学生手册相关查询
                 logger.info("[状态] 正在处理手册相关查询")
+                await asyncio.sleep(0)  # 让出控制权
+                
                 rewritten_query = await self.handbook_processor.rewrite_query(message, history)
                 logger.info(f"[信息] 改写后的问题: {rewritten_query}")
+                await asyncio.sleep(0)  # 让出控制权
                 
                 logger.info("[状态] 正在搜索相关内容")
                 result = self.rag_system.answer_question(
                     query=rewritten_query,
                     return_context=True
                 )
+                await asyncio.sleep(0)  # 让出控制权
                 
                 logger.info("[状态] 正在生成回答")
                 self.conversation_manager.add_message(
@@ -268,7 +275,7 @@ async def main():
         rag_system = LLMRAG(
             data_path=DATA_PATH,
             api_key=API_KEY,
-            initial_top_k=30,
+            initial_top_k=15,
             final_top_k=5
         )
         

@@ -81,7 +81,7 @@ class ChatInterface:
             self.rag_instance = LLMRAG(
                 data_path=DATA_PATH,
                 api_key=API_KEY,
-                initial_top_k=30,
+                initial_top_k=15,
                 final_top_k=5
             )
             
