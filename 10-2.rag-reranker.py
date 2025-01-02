@@ -121,7 +121,7 @@ class Reranker:
         return candidates
 
 def search_with_rerank(query: str, hybrid_searcher: HybridSearcher, reranker: Reranker, 
-                      initial_top_k: int = 30, final_top_k: int = 5):
+                      initial_top_k: int = 15, final_top_k: int = 5):
     # 1. 混合检索召回候选
     candidates = hybrid_searcher.hybrid_search(query, top_k=initial_top_k)
     

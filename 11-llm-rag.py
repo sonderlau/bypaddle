@@ -154,7 +154,7 @@ class LLMRAG:
         start_total = time.time()
         
         # 1. 检索相关文档
-        logger.info(f"开始检索相关文档，搜索参数: top_k={self.initial_top_k}, final_top_k={self.final_top_k}")
+        logger.info(f"开始检索相关文档。这一步比较耗时。 搜索参数: 粗召回top_k={self.initial_top_k}, 精排final_top_k={self.final_top_k}")
         search_start = time.time()
         search_results = search_with_rerank(
             query=query,
@@ -165,7 +165,7 @@ class LLMRAG:
         )
         search_time = time.time() - search_start
         
-        logger.info(f"检索完成，耗时 {search_time:.2f}秒，找到 {len(search_results)} 条结果")
+        logger.info(f"检索完成，耗时 {search_time:.2f}秒。精排序后 {len(search_results)} 条结果")
 
         # 2. 格式化上下文
         logger.info("开始格式化上下文...")

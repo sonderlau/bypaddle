@@ -210,28 +210,28 @@ class WorkflowManager:
         """处理用户消息"""
         try:
             logger.info("[状态] 开始处理用户消息")
-            await asyncio.sleep(0)  # 让出控制权
             
             history = self.conversation_manager.get_history(user_id)
             logger.info("[状态] 正在判断问题类型")
-            await asyncio.sleep(0)  # 让出控制权
             
             is_handbook_query = await self.handbook_processor.is_handbook_related(message)
             
             if is_handbook_query:
                 logger.info("[状态] 正在处理手册相关查询")
-                await asyncio.sleep(0)  # 让出控制权
+                await asyncio.sleep(0)
                 
                 rewritten_query = await self.handbook_processor.rewrite_query(message, history)
                 logger.info(f"[信息] 改写后的问题: {rewritten_query}")
-                await asyncio.sleep(0)  # 让出控制权
+                await asyncio.sleep(0)
                 
                 logger.info("[状态] 正在搜索相关内容")
-                result = self.rag_system.answer_question(
+                # 使用 asyncio.to_thread 将同步操作放到线程池中执行
+                result = await asyncio.to_thread(
+                    self.rag_system.answer_question,
                     query=rewritten_query,
                     return_context=True
                 )
-                await asyncio.sleep(0)  # 让出控制权
+                await asyncio.sleep(0)
                 
                 logger.info("[状态] 正在生成回答")
                 self.conversation_manager.add_message(
