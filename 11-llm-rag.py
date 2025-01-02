@@ -128,7 +128,7 @@ class LLMRAG:
 
 请生成解答："""
 
-        logger.info(f"生成答案，使用模型：{self.model_name}")
+        logger.info(f"生成答案，这一步比较耗时。使用模型：{self.model_name}")
         response = self.client.chat.completions.create(
             model=self.model_name,  
             messages=[{

@@ -20,6 +20,7 @@
             max-width: 1400px;
             margin: 0 auto;
             height: calc(100vh - 40px);
+            padding-bottom: 50px;
         }
         .chat-container {
             flex: 3;
@@ -245,6 +246,54 @@
             background-color: #f8f9fa;
             border-radius: 8px;
             border: 1px solid #e9ecef;
+            transition: all 0.3s ease;
+        }
+        .context details {
+            margin: 4px 0;
+        }
+        .context summary {
+            position: relative;
+            font-weight: 500;
+            color: #1a73e8;
+            cursor: pointer;
+            outline: none;
+            padding: 4px 8px;
+            border-radius: 4px;
+            transition: all 0.2s ease;
+            user-select: none;
+            display: flex;
+            align-items: center;
+        }
+        .context summary:hover {
+            background-color: rgba(26, 115, 232, 0.1);
+        }
+        .context summary::before {
+            content: '▶';
+            font-size: 12px;
+            margin-right: 8px;
+            transition: transform 0.2s ease;
+        }
+        .context details[open] summary::before {
+            transform: rotate(90deg);
+        }
+        .context details[open] summary {
+            margin-bottom: 12px;
+            border-bottom: 1px solid #e9ecef;
+            padding-bottom: 8px;
+        }
+        .context-content {
+            padding: 0 8px;
+            animation: slideDown 0.3s ease;
+        }
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
         }
         .context-header {
             margin-bottom: 8px;
@@ -287,6 +336,45 @@
         .user .message-content {
             background-color: #1a73e8;
             color: white;
+        }
+        .footer {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: linear-gradient(to bottom, rgba(248,249,250,0.9), rgba(248,249,250,0.95));
+            backdrop-filter: blur(5px);
+            padding: 12px 20px;
+            text-align: center;
+            border-top: 1px solid rgba(225,228,232,0.8);
+            font-size: 14px;
+            color: #666;
+            z-index: 1000;
+            box-shadow: 0 -2px 10px rgba(0,0,0,0.05);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 8px;
+        }
+        .footer-icon {
+            color: #1a73e8;
+            font-size: 16px;
+        }
+        .footer-text {
+            line-height: 1.4;
+        }
+        .footer-text strong {
+            color: #1a73e8;
+            font-weight: 500;
+        }
+        @media (max-width: 768px) {
+            .footer {
+                padding: 8px 12px;
+                font-size: 12px;
+            }
+            .main-container {
+                padding-bottom: 40px;
+            }
         }
     </style>
 </head>
@@ -356,6 +444,12 @@
             </div>
         </div>
     </div>
+    <footer class="footer">
+        <span class="footer-icon">ℹ️</span>
+        <span class="footer-text">
+            <strong>免责声明：</strong>内容由 AI 生成，请仔细甄别；具体请咨询对应工作人员。
+        </span>
+    </footer>
     <script>
         function handleKeyPress(event) {
             if (event.key === 'Enter') {
@@ -409,12 +503,6 @@
 
             const contentDiv = document.createElement('div');
             contentDiv.className = 'message-content';
-            
-            // 调试信息
-            console.log('Message text:', text);
-            console.log('Is markdown valid:', typeof text === 'string');
-            
-            // 解析消息内容
             contentDiv.innerHTML = marked.parse(text);
             messageDiv.appendChild(contentDiv);
 
@@ -422,27 +510,27 @@
                 const contextDiv = document.createElement('div');
                 contextDiv.className = 'context';
                 
-                // 调试信息
-                console.log('Context:', context);
-                console.log('Is context markdown valid:', typeof context === 'string');
-                
-                // 确保参考依据的 Markdown 正确渲染
-                const formattedContext = marked.parse(context)
-                    .replace(/<p>/g, '<p class="context-p">')
-                    .replace(/<ul>/g, '<ul class="context-ul">')
-                    .replace(/<ol>/g, '<ol class="context-ol">')
-                    .replace(/<li>/g, '<li class="context-li">')
-                    .replace(/<code>/g, '<code class="context-code">');
-                
+                // 使用 details 和 summary 实现折叠效果
                 contextDiv.innerHTML = `
-                    <div class="context-header">
-                        <strong>参考依据：</strong>
-                    </div>
-                    <div class="context-content">
-                        ${formattedContext}
-                    </div>
+                    <details>
+                        <summary>
+                            参考依据
+                            <span class="context-count">(${context.split('\n').length} 行)</span>
+                        </summary>
+                        <div class="context-content">
+                            ${marked.parse(context)}
+                        </div>
+                    </details>
                 `;
-                
+
+                // 添加展开/折叠事件监听
+                const details = contextDiv.querySelector('details');
+                details.addEventListener('toggle', function() {
+                    if (this.open) {
+                        messagesDiv.scrollTop = messagesDiv.scrollHeight;
+                    }
+                });
+
                 contentDiv.appendChild(contextDiv);
             }
 
