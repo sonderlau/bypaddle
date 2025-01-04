@@ -6,6 +6,7 @@ from openai import OpenAI
 import importlib.util
 from event_bus import EventBus  # Import EventBus
 import asyncio
+from datetime import datetime  # 修改这里
 
 # 动态导入 LLMRAG
 spec = importlib.util.spec_from_file_location("llm_rag", "11-llm-rag.py")
@@ -130,6 +131,7 @@ class HandbookQueryProcessor:
 3. 保持查询的完整性和准确性
 4. 如果当前问题是对上文的追问，需要将相关上下文合并
 5. 如果是全新的问题，直接使用原问题
+6. 今天是{datetime.now().strftime("%Y-%m-%d")}
 
 只返回改写后的查询语句："""
 
@@ -263,12 +265,12 @@ class WorkflowManager:
                 )
                 await asyncio.sleep(0)
                 
-                logger.info(f"[状态] [用户ID:{user_id}] 正在生成回答")
+                logger.info(f"[状态] [用户ID:{user_id}] 等待LLM返回")
                 self.conversation_manager.add_message(
                     user_id, "assistant", result["answer"], intent="handbook"
                 )
                 
-                logger.info(f"[状态] [用户ID:{user_id}] 处理完成")
+                logger.info(f"[状态] [用户ID:{user_id}] LLM已返回")
                 return {
                     "intent": "handbook",
                     "answer": result["answer"],

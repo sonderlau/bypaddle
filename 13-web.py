@@ -230,7 +230,8 @@ async def ask_question(request: QuestionRequest):
         # 发送完成状态
         await manager.broadcast(json.dumps({
             "type": "status",
-            "message": "处理完成"
+            "message": "✅ 问题处理完成",
+            "status": "success"
         }))
         
         return QuestionResponse(

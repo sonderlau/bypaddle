@@ -7,6 +7,7 @@ import os
 import importlib.util
 import httpx
 import time
+from datetime import datetime  # 修改这里
 
 # 动态导入向量处理器
 spec = importlib.util.spec_from_file_location("vector_processor", "7-1.vector-with-abstract.py")
@@ -89,8 +90,16 @@ class LLMRAG:
         
         for result in results:
             chunk = result['chunk']
-            # 添加章节信息
+            # 添加章节信息和两种页码
             section_info = f"【{chunk['section']}】"
+            page_info = f"(PDF页码第{chunk['page_number']}页"
+            if chunk['document_page'] != chunk['page_number']:
+                page_info += f", 文档第{chunk['document_page']}页)"
+            else:
+                page_info += ")"
+            
+            section_info += page_info
+            
             if chunk['section_abstract']:
                 section_info += f"\n章节概述：{chunk['section_abstract']}"
             
@@ -118,6 +127,8 @@ class LLMRAG:
 3. 合理组织答案结构，适当分点说明
 4. 可以直接引用原文内容，注意语言流畅
 5. 如果有页码，请在答案中说明可以查阅手册的页码
+6. 今天是{datetime.now().strftime("%Y-%m-%d")}
+
 
 参考信息：
 ==========
@@ -125,6 +136,7 @@ class LLMRAG:
 ==========
 
 用户问题：{query}
+
 
 请生成解答："""
 
@@ -141,54 +153,70 @@ class LLMRAG:
         return response.choices[0].message.content.strip()
         
     def answer_question(self, query: str, return_context: bool = False) -> Dict[str, Any]:
-        """回答用户问题
-        
-        Args:
-            query: 用户问题
-            return_context: 是否返回检索到的上下文
+        """回答用户问题"""
+        try:
+            import time
+            start_total = time.time()
             
-        Returns:
-            包含答案和可选上下文的字典
-        """
-        import time
-        start_total = time.time()
-        
-        # 1. 检索相关文档
-        logger.info(f"开始检索相关文档。这一步比较耗时⚠️。 搜索参数: 粗召回top_k={self.initial_top_k}, 精排final_top_k={self.final_top_k}")
-        search_start = time.time()
-        search_results = search_with_rerank(
-            query=query,
-            hybrid_searcher=self.hybrid_searcher,
-            reranker=self.reranker,
-            initial_top_k=self.initial_top_k,
-            final_top_k=self.final_top_k
-        )
-        search_time = time.time() - search_start
-        
-        logger.info(f"检索完成，耗时 {search_time:.2f}秒。精排序后 {len(search_results)} 条结果")
+            # 1. 检索相关文档
+            logger.info(f"开始检索相关文档。这一步比较耗时⚠️。 搜索参数: 粗召回top_k={self.initial_top_k}, 精排final_top_k={self.final_top_k}")
+            search_start = time.time()
+            search_results = search_with_rerank(
+                query=query,
+                hybrid_searcher=self.hybrid_searcher,
+                reranker=self.reranker,
+                initial_top_k=self.initial_top_k,
+                final_top_k=self.final_top_k
+            )
+            search_time = time.time() - search_start
+            
+            logger.info(f"检索完成，耗时 {search_time:.2f}秒。精排序后 {len(search_results)} 条结果")
 
-        # 2. 格式化上下文
-        logger.info("开始格式化上下文...")
-        format_start = time.time()
-        context = self._format_context(search_results)
-        format_time = time.time() - format_start
-        logger.info(f"格式化完成，耗时 {format_time:.2f}秒，上下文长度: {len(context)} 字符")
-        logger.info(f"格式化后的上下文预览:\n{context[:200]}...")
-        
-        # 3. 生成答案
-        logger.info("开始生成答案...")
-        generate_start = time.time()
-        answer = self._generate_answer(query, context)
-        generate_time = time.time() - generate_start
-        
-        total_time = time.time() - start_total
-        logger.info(f"答案生成完成，耗时 {generate_time:.2f}秒")
-        logger.info(f"总耗时: {total_time:.2f}秒 (检索: {search_time:.2f}秒, 格式化: {format_time:.2f}秒, 生成: {generate_time:.2f}秒)")
-        
-        result = {"answer": answer}
-        if return_context:
-            result["context"] = context
-        return result
+            # 2. 格式化上下文
+            logger.info("开始格式化上下文...")
+            format_start = time.time()
+            context = self._format_context(search_results)
+            format_time = time.time() - format_start
+            logger.info(f"格式化完成，耗时 {format_time:.2f}秒，上下文长度: {len(context)} 字符")
+            logger.info(f"格式化后的上下文预览:\n{context[:200]}...")
+            
+            # 3. 生成答案
+            logger.info("开始生成答案...")
+            generate_start = time.time()
+            answer = self._generate_answer(query, context)
+            
+            # 如果答案中没有包含页码，从检索结果中提取页码并添加
+            if not any(f"第{i}页" in answer for i in range(1000)):
+                # 收集两种页码
+                logical_pages = sorted(set(result['chunk']['page_number'] for result in search_results))
+                doc_pages = sorted(set(result['chunk']['document_page'] for result in search_results))
+                
+                # 构建页码信息
+                if set(doc_pages) == set(logical_pages):
+                    # 如果两种页码相同，只显示一种
+                    page_info = f"\n\n(参考自第{', '.join(map(str, logical_pages))}页)"
+                else:
+                    # 如果不同，同时显示两种页码，PDF
+                    # 页码在前
+                    page_info = f"\n\n(参考自PDF页码第{', '.join(map(str, logical_pages))}页"
+                    page_info += f"，对应文档第{', '.join(map(str, doc_pages))}页)"
+                
+                answer += page_info
+                
+            generate_time = time.time() - generate_start
+            
+            total_time = time.time() - start_total
+            logger.info(f"答案生成完成，耗时 {generate_time:.2f}秒")
+            logger.info(f"总耗时: {total_time:.2f}秒 (检索: {search_time:.2f}秒, 格式化: {format_time:.2f}秒, 生成: {generate_time:.2f}秒)")
+            
+            result = {"answer": answer}
+            if return_context:
+                result["context"] = context
+            return result
+            
+        except Exception as e:
+            logger.error(f"生成回答时出错: {str(e)}")
+            raise
 
     def search_similar(self, query: str, top_k: int = 3) -> List[Dict[str, Any]]:
         """搜索相似内容"""

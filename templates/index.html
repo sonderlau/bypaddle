@@ -376,6 +376,28 @@
                 padding-bottom: 40px;
             }
         }
+        .log-entry.success {
+            background-color: #e8f5e9;
+            border-color: #81c784;
+            color: #2e7d32;
+            font-weight: bold;
+            padding: 10px;
+            border-radius: 6px;
+            animation: fadeInAndPulse 1s ease-in;
+        }
+        @keyframes fadeInAndPulse {
+            0% {
+                opacity: 0;
+                transform: scale(0.95);
+            }
+            70% {
+                opacity: 1;
+                transform: scale(1.02);
+            }
+            100% {
+                transform: scale(1);
+            }
+        }
     </style>
 </head>
 <body>
