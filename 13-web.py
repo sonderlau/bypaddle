@@ -1,3 +1,4 @@
+# 13-web.py
 from fastapi import FastAPI, HTTPException, Request, WebSocket, Depends
 from pydantic import BaseModel
 import uvicorn
@@ -17,6 +18,7 @@ import json
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from starlette.status import HTTP_401_UNAUTHORIZED
 import secrets
+from async_rag import AsyncLLMRAG  # 添加导入
 
 # 获取项目根目录的绝对路径
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -207,17 +209,17 @@ async def startup_event():
     try:
         # 配置参数
         DATA_PATH = "output/data_with_abstracts.json"
-        API_KEY="sk-c3b22834c96a4f368657ad8eafa1999f"
+        API_KEY = "sk-c3b22834c96a4f368657ad8eafa1999f"
         
         # 初始化OpenAI客户端
-        http_client = httpx.Client()
+        http_client = httpx.Client()  # 改用同步客户端
         llm_client = OpenAI(
             api_key=API_KEY,
             base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
             http_client=http_client
         )
         
-        # 初始化RAG系统
+        # 初始化同步RAG系统
         rag_instance = LLMRAG(
             data_path=DATA_PATH,
             api_key=API_KEY,

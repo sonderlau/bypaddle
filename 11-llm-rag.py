@@ -1,3 +1,4 @@
+# 11-llm-rag.py
 from typing import List, Dict, Any
 import logging
 import json
@@ -300,9 +301,6 @@ def main():
     test_queries = [
         "学籍异动包括哪些情况？",
         "学生申请休学的流程是什么？",
-        "如何处理学生考试作弊？",
-        "学生证补办流程",
-        "奖学金评定标准"
     ]
     
     # 测试回答

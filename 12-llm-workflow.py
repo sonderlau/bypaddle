@@ -1,3 +1,4 @@
+# 12-llm-workflow.py
 from typing import List, Dict, Any, Optional
 import logging
 import json
@@ -7,6 +8,7 @@ import importlib.util
 from event_bus import EventBus  # Import EventBus
 import asyncio
 from datetime import datetime  # 修改这里
+from async_rag import AsyncLLMRAG
 
 # 动态导入 LLMRAG
 spec = importlib.util.spec_from_file_location("llm_rag", "11-llm-rag.py")
@@ -231,8 +233,8 @@ class WorkflowManager:
         self.conversation_manager = ConversationManager()
         self.handbook_processor = HandbookQueryProcessor(llm_client, self.conversation_manager)
         self.chat_manager = ChatManager(llm_client)
-        self.rag_system = rag_system
-        self.event_bus = EventBus()  # 使用单例模式的 EventBus
+        self.async_rag = AsyncLLMRAG(rag_system)  # 使用异步封装器
+        self.event_bus = EventBus()
         
     async def process_message(self, user_id: str, message: str) -> Dict[str, Any]:
         """处理用户消息"""
@@ -260,8 +262,7 @@ class WorkflowManager:
                 await asyncio.sleep(0)
                 
                 logger.info(f"[状态] [用户ID:{user_id}] 正在搜索相关内容")
-                result = await asyncio.to_thread(
-                    self.rag_system.answer_question,
+                result = await self.async_rag.answer_question(
                     query=rewritten_query,
                     return_context=True
                 )
@@ -326,11 +327,9 @@ async def main():
             "你好",
             # 连续对话测试
             "奖学金有哪些类型？",
-            "国家奖学金的具体要求是什么？",
             "如何申请？",
             
             # 非手册问题
-
             "谢谢你的帮助"
         ]
         
