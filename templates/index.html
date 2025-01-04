@@ -623,6 +623,12 @@
         const MAX_RECONNECT_ATTEMPTS = 5;
 
         function setupWebSocket() {
+            console.log("开始初始化 WebSocket..."); // 添加调试日志
+            // 如果已经存在连接，先关闭它
+            if (ws) {
+                ws.close();
+            }
+            
             // 构建带认证的 WebSocket URL
             const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
             const authHeader = getAuthHeader();
@@ -669,8 +675,33 @@
             };
         }
 
-        // 初始化WebSocket连接
-        setupWebSocket();
+        // 添加登录处理
+        async function handleLogin() {
+            try {
+                const response = await fetch('/health', {
+                    headers: {
+                        'Authorization': getAuthHeader()
+                    }
+                });
+                
+                if (response.ok) {
+                    // 登录成功，初始化 WebSocket
+                    setupWebSocket();  // 只在这里调用一次
+                    return true;
+                }
+            } catch (error) {
+                console.error('登录失败:', error);
+            }
+            return false;
+        }
+
+        // 页面加载时进行登录
+        window.onload = async function() {
+            const loginSuccess = await handleLogin();
+            if (!loginSuccess) {
+                addMessage('认证失败，请刷新页面重试。', false);
+            }
+        };
 
         // 修改addLogEntry函数，增加错误处理和持久化
         function addLogEntry(message) {
@@ -760,34 +791,6 @@
             headerIds: false,  // 禁用标题自动ID
             mangle: false      // 禁用标题ID混淆
         });
-
-        // 添加登录处理
-        async function handleLogin() {
-            try {
-                const response = await fetch('/health', {
-                    headers: {
-                        'Authorization': getAuthHeader()
-                    }
-                });
-                
-                if (response.ok) {
-                    // 登录成功，初始化 WebSocket
-                    setupWebSocket();
-                    return true;
-                }
-            } catch (error) {
-                console.error('登录失败:', error);
-            }
-            return false;
-        }
-
-        // 页面加载时进行登录
-        window.onload = async function() {
-            const loginSuccess = await handleLogin();
-            if (!loginSuccess) {
-                addMessage('认证失败，请刷新页面重试。', false);
-            }
-        };
     </script>
 </body>
 </html>
