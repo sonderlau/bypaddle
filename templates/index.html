@@ -398,6 +398,39 @@
                 transform: scale(1);
             }
         }
+        .manual-download {
+            margin: 15px 0;
+            text-align: center;
+        }
+        
+        .download-btn {
+            display: inline-flex;
+            align-items: center;
+            padding: 10px 20px;
+            background-color: #1a73e8;
+            color: white;
+            text-decoration: none;
+            border-radius: 20px;
+            transition: background-color 0.3s ease;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .download-btn:hover {
+            background-color: #1557b0;
+            text-decoration: none;
+        }
+        
+        .download-icon {
+            margin-right: 8px;
+            font-size: 1.2em;
+        }
+        
+        @media (max-width: 768px) {
+            .download-btn {
+                padding: 8px 16px;
+                font-size: 14px;
+            }
+        }
     </style>
 </head>
 <body>
@@ -409,7 +442,16 @@
             <div class="chat-messages" id="chatMessages">
                 <div class="message bot">
                     <div class="message-content">
-                        <p>你好！我是你的学生手册问答助手，专门为你解答与学校规章制度相关的问题。我的语料库涵盖以下内容，你可以随时向我咨询：</p>
+                        <p>你好！我是你的学生手册问答助手，专门为你解答与学校规章制度相关的问题。</p>
+                        
+                        <div class="manual-download">
+                            <a href="/download-manual" class="download-btn" target="_blank">
+                                <span class="download-icon">📄</span>
+                                这里下载学生手册
+                            </a>
+                        </div>
+                        
+                        <p>我的语料库涵盖以下内容，你可以随时向我咨询：</p>
                         
                         <h3>学籍管理</h3>
                         <ul>

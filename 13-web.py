@@ -8,7 +8,7 @@ import logging
 import importlib.util
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, FileResponse
 from openai import OpenAI
 import asyncio
 from event_bus import EventBus
@@ -272,6 +272,18 @@ async def websocket_endpoint(websocket: WebSocket):
         logger.error(f"[错误] WebSocket连接出错: {str(e)}")
     finally:
         await manager.disconnect(websocket)
+
+@app.get("/download-manual")
+async def download_manual():
+    """提供学生手册PDF下载"""
+    pdf_path = "data/student-manual.pdf"  # 替换为实际的PDF文件路径
+    if not os.path.exists(pdf_path):
+        raise HTTPException(status_code=404, detail="PDF文件不存在")
+    return FileResponse(
+        pdf_path, 
+        filename="杭电信工学生手册(2024版).pdf",
+        media_type="application/pdf"
+    )
 
 def main():
     """主函数"""
