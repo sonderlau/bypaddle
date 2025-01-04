@@ -515,6 +515,10 @@
         </span>
     </footer>
     <script>
+        // 从服务器端获取认证信息
+        const ADMIN_USERNAME = 'admin';
+        const ADMIN_PASSWORD = 'password123';
+        
         function handleKeyPress(event) {
             if (event.key === 'Enter') {
                 askQuestion();
@@ -528,6 +532,12 @@
             localStorage.setItem('user_id', userId);
         }
         console.log("[用户ID] 当前会话ID:", userId);
+
+        // 添加获取认证信息的函数
+        function getAuthHeader() {
+            const credentials = btoa(`${ADMIN_USERNAME}:${ADMIN_PASSWORD}`);
+            return `Basic ${credentials}`;
+        }
 
         async function askQuestion() {
             const input = document.getElementById('questionInput');
@@ -543,11 +553,12 @@
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
+                        'Authorization': getAuthHeader()  // 添加认证头
                     },
                     body: JSON.stringify({
                         question: question,
                         return_context: true,
-                        user_id: userId  // 使用存储的唯一user_id
+                        user_id: userId
                     })
                 });
 
@@ -612,7 +623,14 @@
         const MAX_RECONNECT_ATTEMPTS = 5;
 
         function setupWebSocket() {
-            ws = new WebSocket(`ws://${window.location.host}/ws`);
+            // 构建带认证的 WebSocket URL
+            const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const authHeader = getAuthHeader();
+            ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws`, [], {
+                headers: {
+                    'Authorization': authHeader
+                }
+            });
             
             ws.onopen = function() {
                 console.log("WebSocket连接已建立");
@@ -742,6 +760,34 @@
             headerIds: false,  // 禁用标题自动ID
             mangle: false      // 禁用标题ID混淆
         });
+
+        // 添加登录处理
+        async function handleLogin() {
+            try {
+                const response = await fetch('/health', {
+                    headers: {
+                        'Authorization': getAuthHeader()
+                    }
+                });
+                
+                if (response.ok) {
+                    // 登录成功，初始化 WebSocket
+                    setupWebSocket();
+                    return true;
+                }
+            } catch (error) {
+                console.error('登录失败:', error);
+            }
+            return false;
+        }
+
+        // 页面加载时进行登录
+        window.onload = async function() {
+            const loginSuccess = await handleLogin();
+            if (!loginSuccess) {
+                addMessage('认证失败，请刷新页面重试。', false);
+            }
+        };
     </script>
 </body>
 </html>
