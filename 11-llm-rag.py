@@ -127,7 +127,6 @@ class LLMRAG:
 3. 合理组织答案结构，适当分点说明
 4. 可以直接引用原文内容，注意语言流畅
 5. 如果有页码，请在答案中说明可以查阅手册的页码
-6. 今天是{datetime.now().strftime("%Y-%m-%d")}
 
 
 参考信息：
@@ -178,7 +177,9 @@ class LLMRAG:
             context = self._format_context(search_results)
             format_time = time.time() - format_start
             logger.info(f"格式化完成，耗时 {format_time:.2f}秒，上下文长度: {len(context)} 字符")
-            logger.info(f"格式化后的上下文预览:\n{context[:200]}...")
+            logger.info(f"格式化后的上下文预览:\n"
+                       f"开头部分:\n{context[:200]}...\n"
+                       f"结尾部分:\n...{context[-200:]}")
             
             # 3. 生成答案
             logger.info("开始生成答案...")
