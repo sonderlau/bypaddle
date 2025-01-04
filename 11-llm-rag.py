@@ -128,7 +128,7 @@ class LLMRAG:
 
 请生成解答："""
 
-        logger.info(f"生成答案，这一步比较耗时。使用模型：{self.model_name}")
+        logger.info(f"生成答案，这一步比较耗时⚠️。使用模型：{self.model_name}")
         response = self.client.chat.completions.create(
             model=self.model_name,  
             messages=[{
@@ -154,7 +154,7 @@ class LLMRAG:
         start_total = time.time()
         
         # 1. 检索相关文档
-        logger.info(f"开始检索相关文档。这一步比较耗时。 搜索参数: 粗召回top_k={self.initial_top_k}, 精排final_top_k={self.final_top_k}")
+        logger.info(f"开始检索相关文档。这一步比较耗时⚠️。 搜索参数: 粗召回top_k={self.initial_top_k}, 精排final_top_k={self.final_top_k}")
         search_start = time.time()
         search_results = search_with_rerank(
             query=query,
