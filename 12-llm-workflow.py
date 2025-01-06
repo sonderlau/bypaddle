@@ -152,7 +152,6 @@ class HandbookQueryProcessor:
 3. 保持查询的完整性和准确性
 4. 如果当前问题是对上文的追问，需要将相关上下文合并
 5. 如果是全新的问题，直接使用原问题
-6. 今天是{datetime.now().strftime("%Y-%m-%d")}
 
 只返回改写后的查询语句："""
 

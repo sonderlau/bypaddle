@@ -131,14 +131,31 @@ def search_with_rerank(query: str, hybrid_searcher: HybridSearcher, reranker: Re
     return reranked_results[:final_top_k]
 
 def format_search_results(results, show_scores: bool = False):
-    """格式化搜索结果"""
+    """格式化搜索结果，避免重复发送相同章节的摘要"""
     formatted_results = []
+    
+    # 用于追踪已经处理过的章节摘要
+    processed_sections = set()
+    
+    # 首先添加所有相关章节的摘要（每个章节只添加一次）
+    section_abstracts = []
+    for result in results:
+        chunk = result['chunk']
+        section = chunk['section']
+        if section not in processed_sections and chunk['section_abstract']:
+            section_abstracts.append(f"\n=== {section}章节概述 ===\n{chunk['section_abstract']}")
+            processed_sections.add(section)
+    
+    # 如果有章节摘要，先添加它们
+    if section_abstracts:
+        formatted_results.append("\n".join(section_abstracts))
+    
+    # 然后添加具体的搜索结果，但不重复章节摘要
     for idx, result in enumerate(results, 1):
         chunk = result['chunk']
         text = f"\n=== 结果 {idx} ===\n"
         text += f"章节: {chunk['section']}\n"
-        if chunk['section_abstract']:
-            text += f"章节摘要: {chunk['section_abstract']}\n"
+        # 不再在这里添加章节摘要，因为已经在上面统一添加过了
         text += f"页码: {chunk['page_number']}\n"
         text += f"内容: {chunk['current_content']}\n"
         
@@ -149,6 +166,7 @@ def format_search_results(results, show_scores: bool = False):
             text += f"BM25分数: {result.get('bm25_score', 0):.4f}\n"
             
         formatted_results.append(text)
+    
     return "\n".join(formatted_results)
 
 def main():
