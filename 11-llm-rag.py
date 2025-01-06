@@ -183,6 +183,13 @@ class LLMRAG:
             )
             search_time = time.time() - search_start
             
+            # 添加搜索结果的预览日志
+            for i, result in enumerate(search_results):
+                content = result['chunk']['current_content']
+                logger_adapter.info(f"搜索结果 #{i+1} 预览:\n"
+                                  f"开头100字符: {content[:100]}...\n"
+                                  f"结尾100字符: ...{content[-100:]}")
+            
             logger_adapter.info(f"检索完成，耗时 {search_time:.2f}秒。精排序后 {len(search_results)} 条结果")
 
             # 2. 格式化上下文
