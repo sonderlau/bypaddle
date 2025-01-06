@@ -651,10 +651,15 @@
             ws.onmessage = function(event) {
                 try {
                     const data = JSON.parse(event.data);
-                    if (data.type === 'chat') {
-                        addMessage(data.message, false, data.context);
-                    } else if (data.type === 'log' || data.type === 'status') {
-                        addLogEntry(data);
+                    const currentUserId = localStorage.getItem('user_id');
+                    
+                    // 只显示当前用户的日志
+                    if (data.user_id === currentUserId) {
+                        if (data.type === 'chat') {
+                            addMessage(data.message, false, data.context);
+                        } else if (data.type === 'log' || data.type === 'status') {
+                            addLogEntry(data);
+                        }
                     }
                 } catch (error) {
                     console.error("处理WebSocket消息时出错:", error);

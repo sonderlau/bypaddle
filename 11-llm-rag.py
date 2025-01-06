@@ -112,16 +112,22 @@ class LLMRAG:
             
         return "\n\n".join(context_parts)
         
-    def _generate_answer(self, query: str, context: str) -> str:
+    def _generate_answer(self, query: str, context: str, user_id: str = None) -> str:
         """使用LLM生成答案
         
         Args:
             query: 用户问题
             context: 检索到的相关上下文
+            user_id: 用户ID，用于日志隔离
             
         Returns:
             生成的答案
         """
+        logger_adapter = logging.LoggerAdapter(
+            logger,
+            {'user_id': user_id}
+        )
+
         prompt = f"""请基于以下参考信息回答用户的问题。要求：
 1. 答案必须准确，与参考信息保持一致
 2. 如果参考信息不足以完整回答问题，请明确指出
@@ -140,7 +146,7 @@ class LLMRAG:
 
 请生成解答："""
 
-        logger.info(f"生成答案。这一步需要等待约30秒⚠️⚠️⚠️。使用模型：{self.model_name}")
+        logger_adapter.info(f"生成答案。这一步需要等待约30秒⚠️⚠️⚠️。使用模型：{self.model_name}")
         response = self.client.chat.completions.create(
             model=self.model_name,  
             messages=[{
@@ -152,14 +158,21 @@ class LLMRAG:
         
         return response.choices[0].message.content.strip()
         
-    def answer_question(self, query: str, return_context: bool = False) -> Dict[str, Any]:
+    def answer_question(self, query: str, return_context: bool = False, user_id: str = None) -> Dict[str, Any]:
         """回答用户问题"""
         try:
+            # 创建日志适配器
+            logger_adapter = logging.LoggerAdapter(
+                logger,
+                {'user_id': user_id}
+            )
+            
             import time
             start_total = time.time()
             
             # 1. 检索相关文档
-            logger.info(f"开始检索相关文档。这一步需要等待约25秒⚠️⚠️⚠️。 搜索参数: 粗召回top_k={self.initial_top_k}, 精排final_top_k={self.final_top_k}")
+            logger_adapter.info("开始检索相关文档。这一步需要等待约25秒⚠️⚠️⚠️。 "
+                              f"搜索参数: 粗召回top_k={self.initial_top_k}, 精排final_top_k={self.final_top_k}")
             search_start = time.time()
             search_results = search_with_rerank(
                 query=query,
@@ -170,46 +183,25 @@ class LLMRAG:
             )
             search_time = time.time() - search_start
             
-            logger.info(f"检索完成，耗时 {search_time:.2f}秒。精排序后 {len(search_results)} 条结果")
+            logger_adapter.info(f"检索完成，耗时 {search_time:.2f}秒。精排序后 {len(search_results)} 条结果")
 
             # 2. 格式化上下文
-            logger.info("开始格式化上下文...")
+            logger_adapter.info("开始格式化上下文...")
             format_start = time.time()
             context = self._format_context(search_results)
             format_time = time.time() - format_start
-            logger.info(f"格式化完成，耗时 {format_time:.2f}秒，上下文长度: {len(context)} 字符")
-            logger.info(f"格式化后的上下文预览:\n"
-                       f"开头部分:\n{context[:200]}...\n"
-                       f"结尾部分:\n...{context[-200:]}")
+            logger_adapter.info(f"格式化完成，耗时 {format_time:.2f}秒，上下文长度: {len(context)} 字符")
             
             # 3. 生成答案
-            logger.info("开始生成答案...")
+            logger_adapter.info("开始生成答案...")
             generate_start = time.time()
-            answer = self._generate_answer(query, context)
-            
-            # 如果答案中没有包含页码，从检索结果中提取页码并添加
-            if not any(f"第{i}页" in answer for i in range(1000)):
-                # 收集两种页码
-                logical_pages = sorted(set(result['chunk']['page_number'] for result in search_results))
-                doc_pages = sorted(set(result['chunk']['document_page'] for result in search_results))
-                
-                # 构建页码信息
-                if set(doc_pages) == set(logical_pages):
-                    # 如果两种页码相同，只显示一种
-                    page_info = f"\n\n(参考自第{', '.join(map(str, logical_pages))}页)"
-                else:
-                    # 如果不同，同时显示两种页码，PDF
-                    # 页码在前
-                    page_info = f"\n\n(参考自PDF页码第{', '.join(map(str, logical_pages))}页"
-                    page_info += f"，对应文档第{', '.join(map(str, doc_pages))}页)"
-                
-                answer += page_info
-                
+            answer = self._generate_answer(query, context, user_id)  # 传入 user_id
             generate_time = time.time() - generate_start
             
             total_time = time.time() - start_total
-            logger.info(f"答案生成完成，耗时 {generate_time:.2f}秒")
-            logger.info(f"总耗时: {total_time:.2f}秒 (检索: {search_time:.2f}秒, 格式化: {format_time:.2f}秒, 生成: {generate_time:.2f}秒)")
+            logger_adapter.info(f"答案生成完成，耗时 {generate_time:.2f}秒")
+            logger_adapter.info(f"总耗时: {total_time:.2f}秒 (检索: {search_time:.2f}秒, "
+                              f"格式化: {format_time:.2f}秒, 生成: {generate_time:.2f}秒)")
             
             result = {"answer": answer}
             if return_context:
@@ -217,7 +209,7 @@ class LLMRAG:
             return result
             
         except Exception as e:
-            logger.error(f"生成回答时出错: {str(e)}")
+            logger_adapter.error(f"生成回答时出错: {str(e)}")
             raise
 
     def search_similar(self, query: str, top_k: int = 3) -> List[Dict[str, Any]]:

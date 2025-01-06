@@ -39,21 +39,25 @@ root_logger = logging.getLogger()
 class WebSocketHandler(logging.Handler):
     def emit(self, record):
         try:
+            # 从 extra 中获取用户ID
+            user_id = getattr(record, 'user_id', None)
+            if user_id is None:
+                return  # 如果没有用户ID，直接忽略这条日志
+                
             msg = self.format(record)
             message = {
                 "type": "log",
                 "message": msg,
-                "status": self.get_status_type(msg)
+                "status": self.get_status_type(msg),
+                "user_id": user_id
             }
             
-            # 获取或创建事件循环
             try:
                 loop = asyncio.get_running_loop()
             except RuntimeError:
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
             
-            # 使用 run_coroutine_threadsafe 来安全地运行异步代码
             if loop.is_running():
                 asyncio.run_coroutine_threadsafe(
                     manager.broadcast(json.dumps(message)),
@@ -70,7 +74,6 @@ class WebSocketHandler(logging.Handler):
             self.handleError(record)
 
     def get_status_type(self, msg):
-        # 状态类型判断保持不变
         if "[状态]" in msg:
             return "status"
         elif "[信息]" in msg:
@@ -239,30 +242,27 @@ async def startup_event():
 async def ask_question(request: QuestionRequest, username: str = Depends(get_current_username)):
     """处理问答请求"""
     try:
-        # 立即发送开始处理的状态
-        await manager.broadcast(json.dumps({
-            "type": "status",
-            "message": "开始处理您的问题..."
-        }))
+        # 创建一个带有用户ID的日志适配器
+        logger_adapter = logging.LoggerAdapter(
+            logger,
+            {'user_id': request.user_id}
+        )
+        
+        logger_adapter.info("开始处理您的问题...")
         
         result = await workflow_manager.process_message(
             user_id=request.user_id,
             message=request.question
         )
         
-        # 发送完成状态
-        await manager.broadcast(json.dumps({
-            "type": "status",
-            "message": "✅ 问题处理完成",
-            "status": "success"
-        }))
+        logger_adapter.info("✅ 问题处理完成")
         
         return QuestionResponse(
             answer=result["answer"] if isinstance(result, dict) else result,
             context=result.get("context") if isinstance(result, dict) else None
         )
     except Exception as e:
-        logger.error(f"处理问题时出错: {str(e)}")
+        logger_adapter.error(f"处理问题时出错: {str(e)}")
         raise HTTPException(
             status_code=500,
             detail=str(e)
