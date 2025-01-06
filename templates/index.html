@@ -525,11 +525,11 @@
             }
         }
 
-        // 在页面加载时检查是否已有user_id，没有则生成并存储
-        let userId = localStorage.getItem('user_id');
+        // 使用 sessionStorage 替代 localStorage
+        let userId = sessionStorage.getItem('user_id');
         if (!userId) {
             userId = 'user-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
-            localStorage.setItem('user_id', userId);
+            sessionStorage.setItem('user_id', userId);
         }
         console.log("[用户ID] 当前会话ID:", userId);
 
@@ -651,15 +651,25 @@
             ws.onmessage = function(event) {
                 try {
                     const data = JSON.parse(event.data);
-                    const currentUserId = localStorage.getItem('user_id');
+                    const currentUserId = sessionStorage.getItem('user_id');
                     
-                    // 只显示当前用户的日志
+                    // 添加调试日志
+                    console.log('收到WebSocket消息:', {
+                        messageUserId: data.user_id,
+                        currentUserId: currentUserId,
+                        fullMessage: data
+                    });
+                    
+                    // 只有当消息中的user_id与当前用户的user_id匹配时才显示
                     if (data.user_id === currentUserId) {
+                        console.log('显示消息 - ID匹配');
                         if (data.type === 'chat') {
                             addMessage(data.message, false, data.context);
                         } else if (data.type === 'log' || data.type === 'status') {
                             addLogEntry(data);
                         }
+                    } else {
+                        console.log('忽略消息 - ID不匹配');
                     }
                 } catch (error) {
                     console.error("处理WebSocket消息时出错:", error);
