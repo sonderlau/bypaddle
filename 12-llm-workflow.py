@@ -255,105 +255,90 @@ class WorkflowManager:
         self.chat_manager = ChatManager(llm_client)
         self.async_rag = AsyncLLMRAG(rag_system)
         self.event_bus = EventBus()
-        self.workflow_semaphore = asyncio.Semaphore(3)  # 总体并发限制
-        self.rag_semaphore = asyncio.Semaphore(1)      # RAG 搜索并发限制
-        self.llm_semaphore = asyncio.Semaphore(2)      # LLM 调用并发限制
-        
+
     async def process_message(self, user_id: str, message: str) -> Dict[str, Any]:
         """处理用户消息"""
         start_time = time.time()
-        request_id = f"{user_id}-{int(start_time)}"  # 创建唯一的请求ID
+        request_id = f"{user_id}-{int(start_time)}"
         
         try:
             debug_logger.info(f"[{request_id}] 新请求开始处理")
-            debug_logger.info(f"[{request_id}] 当前信号量状态 - 工作流: {self.workflow_semaphore._value}, RAG: {self.rag_semaphore._value}, LLM: {self.llm_semaphore._value}")
-            
             logger_adapter = logging.LoggerAdapter(
                 logger,
                 {'user_id': user_id}
             )
             
-            async with self.workflow_semaphore:
-                debug_logger.info(f"[{request_id}] 获得工作流信号量")
-                logger_adapter.info("开始处理用户消息")
+            logger_adapter.info("开始处理用户消息")
+            
+            # 记录用户消息
+            self.conversation_manager.add_message(user_id, "user", message)
+            
+            # 获取历史记录
+            history = self.conversation_manager.get_history(user_id)
+            debug_logger.info(f"[{request_id}] 历史记录获取完成，数量: {len(history)}")
+            
+            # 判断意图
+            intent_start = time.time()
+            is_handbook_query = await self.handbook_processor.is_handbook_related(user_id, message)
+            debug_logger.info(f"[{request_id}] 意图判断完成，耗时: {time.time() - intent_start:.2f}秒, 结果: {'手册相关' if is_handbook_query else '一般对话'}")
+            if is_handbook_query:
+                debug_logger.info(f"[{request_id}] 开始处理手册相关查询")
                 
-                # 记录用户消息
-                self.conversation_manager.add_message(user_id, "user", message)
-                
-                # 获取历史记录
-                history = self.conversation_manager.get_history(user_id)
-                debug_logger.info(f"[{request_id}] 历史记录获取完成，数量: {len(history)}")
-                
-                # 判断意图
-                intent_start = time.time()
-                is_handbook_query = await self.handbook_processor.is_handbook_related(user_id, message)
-                debug_logger.info(f"[{request_id}] 意图判断完成，耗时: {time.time() - intent_start:.2f}秒, 结果: {'手册相关' if is_handbook_query else '一般对话'}")
-                if is_handbook_query:
-                    debug_logger.info(f"[{request_id}] 开始处理手册相关查询")
-                    
-                    rewrite_start = time.time()
-                    rewritten_query = await self.handbook_processor.rewrite_query(user_id, message, history)
-                    debug_logger.info(f"[{request_id}] 查询改写完成，耗时: {time.time() - rewrite_start:.2f}秒")
-                    debug_logger.info(f"[{request_id}] 原始查询: {message}")
-                    debug_logger.info(f"[{request_id}] 改写后: {rewritten_query}")
-                    logger_adapter.info(f"改写后: {rewritten_query}")
-                    # RAG 搜索使用专门的信号量
+                rewrite_start = time.time()
+                rewritten_query = await self.handbook_processor.rewrite_query(user_id, message, history)
+                logger_adapter.info(f"查询改写完成，耗时: {time.time() - rewrite_start:.2f}秒")
+                logger_adapter.info(f"原始查询: {message}")
+                logger_adapter.info(f"改写后: {rewritten_query}")
+                # RAG 搜索使用专门的信号量
 
-                    debug_logger.info(f"[{request_id}] 等待 RAG 信号量，当前值: {self.rag_semaphore._value}")
-                    logger_adapter.info(f"等待 RAG 信号量...")
-                    async with self.rag_semaphore:
-                        debug_logger.info(f"[{request_id}] 获得 RAG 信号量")
-                        rag_start = time.time()
-                        try:
-                            result = await asyncio.shield(
-                                self.async_rag.answer_question(
-                                    query=rewritten_query,
-                                    return_context=True,
-                                    user_id=user_id
-                                )
-                            )
-                            debug_logger.info(f"[{request_id}] RAG 搜索完成，耗时: {time.time() - rag_start:.2f}秒")
-                            logger_adapter.info(f"RAG 搜索完成，耗时: {time.time() - rag_start:.2f}秒")
-                        except Exception as e:
-                            debug_logger.error(f"[{request_id}] RAG 搜索出错: {str(e)}")
-                            logger_adapter.error(f"RAG 搜索出错: {str(e)}")
-                            raise
-                        finally:
-                            debug_logger.info(f"[{request_id}] 释放 RAG 信号量")
-                            logger_adapter.info("释放 RAG 信号量")
-                    
-                    self.conversation_manager.add_message(
-                        user_id, "assistant", result["answer"], intent="handbook"
+                logger_adapter.info(f"正在等待 RAG 搜索信号量，排队中...")
+                rag_start = time.time()
+                try:
+                    result = await asyncio.shield(
+                        self.async_rag.answer_question(
+                            query=rewritten_query,
+                            return_context=True,
+                            user_id=user_id
+                        )
                     )
-                    
-                    return {
-                        "intent": "handbook",
-                        "answer": result["answer"],
-                        "context": result.get("context"),
-                        "rewritten_query": rewritten_query
-                    }
-                else:
-                    debug_logger.info(f"[{request_id}] 开始处理一般对话")
-                    logger_adapter.info("开始处理一般对话")
-                    async with self.llm_semaphore:
-                        debug_logger.info(f"[{request_id}] 获得 LLM 信号量")
-                        chat_start = time.time()
-                        try:
-                            response = await self.chat_manager.handle_general_chat(message)
-                            debug_logger.info(f"[{request_id}] 对话处理完成，耗时: {time.time() - chat_start:.2f}秒")
-                            logger_adapter.info(f"对话处理完成，耗时: {time.time() - chat_start:.2f}秒")
-                        finally:
-                            debug_logger.info(f"[{request_id}] 释放 LLM 信号量")
-                    
-                    self.conversation_manager.add_message(
-                        user_id, "assistant", response, intent="chat"
-                    )
-                    
-                    return {
-                        "intent": "chat",
-                        "answer": response,
-                        "context": None
-                    }
+                    debug_logger.info(f"[{request_id}] RAG 搜索完成，耗时: {time.time() - rag_start:.2f}秒")
+                    logger_adapter.info(f"RAG 搜索完成，耗时: {time.time() - rag_start:.2f}秒")
+                except Exception as e:
+                    debug_logger.error(f"[{request_id}] RAG 搜索出错: {str(e)}")
+                    logger_adapter.error(f"RAG 搜索出错: {str(e)}")
+                    raise
+                
+                self.conversation_manager.add_message(
+                    user_id, "assistant", result["answer"], intent="handbook"
+                )
+                
+                return {
+                    "intent": "handbook",
+                    "answer": result["answer"],
+                    "context": result.get("context"),
+                    "rewritten_query": rewritten_query
+                }
+            else:
+                debug_logger.info(f"[{request_id}] 开始处理一般对话")
+                logger_adapter.info("开始处理一般对话")
+                chat_start = time.time()
+                try:
+                    response = await self.chat_manager.handle_general_chat(message)
+                    debug_logger.info(f"[{request_id}] 对话处理完成，耗时: {time.time() - chat_start:.2f}秒")
+                    logger_adapter.info(f"对话处理完成，耗时: {time.time() - chat_start:.2f}秒")
+                except Exception as e:
+                    debug_logger.error(f"[{request_id}] 处理一般对话时出错: {str(e)}")
+                    raise
+                
+                self.conversation_manager.add_message(
+                    user_id, "assistant", response, intent="chat"
+                )
+                
+                return {
+                    "intent": "chat",
+                    "answer": response,
+                    "context": None
+                }
             
         except Exception as e:
             debug_logger.error(f"[{request_id}] 处理消息时出错: {str(e)}")
@@ -362,7 +347,6 @@ class WorkflowManager:
             total_time = time.time() - start_time
             debug_logger.info(f"[{request_id}] 请求处理完成，总耗时: {total_time:.2f}秒")
             logger_adapter.info(f"请求处理完成，总耗时: {total_time:.2f}秒")
-            debug_logger.info(f"[{request_id}] 最终信号量状态 - 工作流: {self.workflow_semaphore._value}, RAG: {self.rag_semaphore._value}, LLM: {self.llm_semaphore._value}")
 
 async def main():
     """测试工作流"""

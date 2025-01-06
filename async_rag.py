@@ -13,6 +13,7 @@ from event_bus import EventBus  # Import EventBus
 import asyncio
 from datetime import datetime  # 修改这里
 import time
+logger = logging.getLogger(__name__)
 
 # 使用已经创建的调试日志记录器
 debug_logger = logging.getLogger('debug')
@@ -34,53 +35,40 @@ class AsyncLLMRAG:
             rag_system: 同步RAG系统实例
         """
         self.rag = rag_system
-        # 添加信号量来控制并发
+        # 只保留 RAG 搜索的信号量
         self.semaphore = asyncio.Semaphore(1)  # 限制同时只能有一个搜索请求
         
     async def answer_question(self, query: str, return_context: bool = False, user_id: str = None) -> Dict[str, Any]:
         """异步回答问题"""
         start_time = time.time()
-        request_id = f"{user_id}-{int(start_time)}"  # 创建唯一的请求ID
-        
+        request_id = f"{user_id}-{int(start_time)}"
+        logger_adapter = logging.LoggerAdapter(
+                logger,
+                {'user_id': user_id}
+            )
+            
         try:
             debug_logger.info(f"[{request_id}] AsyncLLMRAG 开始处理请求")
-            debug_logger.info(f"[{request_id}] 当前信号量状态: {self.semaphore._value}")
-            
-            # 使用信号量控制并发
-            debug_logger.info(f"[{request_id}] 等待获取 AsyncLLMRAG 信号量")
+
+            # 使用信号量控制 RAG 搜索
+            debug_logger.info(f"[{request_id}] 等待获取 RAG 搜索信号量")
             async with self.semaphore:
-                debug_logger.info(f"[{request_id}] 获得 AsyncLLMRAG 信号量")
+                debug_logger.info(f"[{request_id}] 获得 RAG 搜索信号量")
+                logger_adapter.info("获得 RAG 搜索信号量")
+
+                result = await asyncio.to_thread(
+                    self.rag.answer_question,
+                    query=query,
+                    return_context=return_context,
+                    user_id=user_id
+                )
+                debug_logger.info(f"[{request_id}] RAG 搜索完成")
                 
-                # 记录开始执行同步操作
-                to_thread_start = time.time()
-                debug_logger.info(f"[{request_id}] 开始执行同步 RAG 操作")
-                
-                try:
-                    # 使用同步 RAG 系统回答问题，但在异步上下文中执行
-                    result = await asyncio.to_thread(
-                        self.rag.answer_question,
-                        query=query,
-                        return_context=return_context,
-                        user_id=user_id
-                    )
-                    
-                    to_thread_time = time.time() - to_thread_start
-                    debug_logger.info(f"[{request_id}] 同步 RAG 操作完成，耗时: {to_thread_time:.2f}秒")
-                    return result
-                    
-                except Exception as e:
-                    debug_logger.error(f"[{request_id}] 同步 RAG 操作出错: {str(e)}")
-                    raise
-                finally:
-                    debug_logger.info(f"[{request_id}] 释放 AsyncLLMRAG 信号量")
+            return result
                 
         except Exception as e:
             debug_logger.error(f"[{request_id}] AsyncLLMRAG 处理请求时出错: {str(e)}")
             raise
-        finally:
-            total_time = time.time() - start_time
-            debug_logger.info(f"[{request_id}] AsyncLLMRAG 请求处理完成，总耗时: {total_time:.2f}秒")
-            debug_logger.info(f"[{request_id}] 最终信号量状态: {self.semaphore._value}")
 
 async def main():
     """测试同步和异步RAG系统的性能对比"""
