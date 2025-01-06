@@ -288,7 +288,6 @@ class WorkflowManager:
                 intent_start = time.time()
                 is_handbook_query = await self.handbook_processor.is_handbook_related(user_id, message)
                 debug_logger.info(f"[{request_id}] 意图判断完成，耗时: {time.time() - intent_start:.2f}秒, 结果: {'手册相关' if is_handbook_query else '一般对话'}")
-                
                 if is_handbook_query:
                     debug_logger.info(f"[{request_id}] 开始处理手册相关查询")
                     
@@ -297,9 +296,11 @@ class WorkflowManager:
                     debug_logger.info(f"[{request_id}] 查询改写完成，耗时: {time.time() - rewrite_start:.2f}秒")
                     debug_logger.info(f"[{request_id}] 原始查询: {message}")
                     debug_logger.info(f"[{request_id}] 改写后: {rewritten_query}")
-                    
+                    logger_adapter.info(f"改写后: {rewritten_query}")
                     # RAG 搜索使用专门的信号量
+
                     debug_logger.info(f"[{request_id}] 等待 RAG 信号量，当前值: {self.rag_semaphore._value}")
+                    logger_adapter.info(f"等待 RAG 信号量...")
                     async with self.rag_semaphore:
                         debug_logger.info(f"[{request_id}] 获得 RAG 信号量")
                         rag_start = time.time()
@@ -312,11 +313,14 @@ class WorkflowManager:
                                 )
                             )
                             debug_logger.info(f"[{request_id}] RAG 搜索完成，耗时: {time.time() - rag_start:.2f}秒")
+                            logger_adapter.info(f"RAG 搜索完成，耗时: {time.time() - rag_start:.2f}秒")
                         except Exception as e:
                             debug_logger.error(f"[{request_id}] RAG 搜索出错: {str(e)}")
+                            logger_adapter.error(f"RAG 搜索出错: {str(e)}")
                             raise
                         finally:
                             debug_logger.info(f"[{request_id}] 释放 RAG 信号量")
+                            logger_adapter.info("释放 RAG 信号量")
                     
                     self.conversation_manager.add_message(
                         user_id, "assistant", result["answer"], intent="handbook"
@@ -330,12 +334,14 @@ class WorkflowManager:
                     }
                 else:
                     debug_logger.info(f"[{request_id}] 开始处理一般对话")
+                    logger_adapter.info("开始处理一般对话")
                     async with self.llm_semaphore:
                         debug_logger.info(f"[{request_id}] 获得 LLM 信号量")
                         chat_start = time.time()
                         try:
                             response = await self.chat_manager.handle_general_chat(message)
                             debug_logger.info(f"[{request_id}] 对话处理完成，耗时: {time.time() - chat_start:.2f}秒")
+                            logger_adapter.info(f"对话处理完成，耗时: {time.time() - chat_start:.2f}秒")
                         finally:
                             debug_logger.info(f"[{request_id}] 释放 LLM 信号量")
                     
@@ -355,6 +361,7 @@ class WorkflowManager:
         finally:
             total_time = time.time() - start_time
             debug_logger.info(f"[{request_id}] 请求处理完成，总耗时: {total_time:.2f}秒")
+            logger_adapter.info(f"请求处理完成，总耗时: {total_time:.2f}秒")
             debug_logger.info(f"[{request_id}] 最终信号量状态 - 工作流: {self.workflow_semaphore._value}, RAG: {self.rag_semaphore._value}, LLM: {self.llm_semaphore._value}")
 
 async def main():
