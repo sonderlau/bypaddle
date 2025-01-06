@@ -409,3 +409,10 @@
 2025-01-06 11:46:09,400 - debug - [INFO] - [user-1736130937626-c1uhh9cxr-1736135098] 获得 RAG 搜索信号量
 2025-01-06 11:46:09,403 - debug - [INFO] - [user-1735968624262-qv9j0ijly-1736135094] RAG 搜索完成，耗时: 73.33秒
 2025-01-06 11:46:09,413 - debug - [INFO] - [user-1735968624262-qv9j0ijly-1736135094] 请求处理完成，总耗时: 74.72秒
+2025-01-06 13:06:08,498 - debug - [INFO] - [user-1735968624262-qv9j0ijly-1736139968] 新请求开始处理
+2025-01-06 13:06:08,500 - debug - [INFO] - [user-1735968624262-qv9j0ijly-1736139968] 历史记录获取完成，数量: 1
+2025-01-06 13:06:09,247 - debug - [INFO] - [user-1735968624262-qv9j0ijly-1736139968] 意图判断完成，耗时: 0.75秒, 结果: 手册相关
+2025-01-06 13:06:09,248 - debug - [INFO] - [user-1735968624262-qv9j0ijly-1736139968] 开始处理手册相关查询
+2025-01-06 13:06:09,979 - debug - [ERROR] - [user-1735968624262-qv9j0ijly-1736139968] RAG 搜索出错: cannot access local variable 'logger_adapter' where it is not associated with a value
+2025-01-06 13:06:09,981 - debug - [ERROR] - [user-1735968624262-qv9j0ijly-1736139968] 处理消息时出错: cannot access local variable 'logger_adapter' where it is not associated with a value
+2025-01-06 13:06:09,982 - debug - [INFO] - [user-1735968624262-qv9j0ijly-1736139968] 请求处理完成，总耗时: 1.48秒

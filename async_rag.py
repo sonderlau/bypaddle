@@ -13,6 +13,8 @@ from event_bus import EventBus  # Import EventBus
 import asyncio
 from datetime import datetime  # 修改这里
 import time
+
+# 在文件顶部的导入部分后添加
 logger = logging.getLogger(__name__)
 
 # 使用已经创建的调试日志记录器
@@ -23,6 +25,12 @@ spec = importlib.util.spec_from_file_location("llm_rag", "11-llm-rag.py")
 rag_module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(rag_module)
 LLMRAG = rag_module.LLMRAG
+
+# 添加动态导入:
+spec_reranker = importlib.util.spec_from_file_location("rag_reranker", "10-2.rag-reranker.py")
+reranker_module = importlib.util.module_from_spec(spec_reranker)
+spec_reranker.loader.exec_module(reranker_module)
+search_with_rerank = reranker_module.search_with_rerank
 
 class AsyncLLMRAG:
     """异步RAG系统封装器"""
@@ -35,39 +43,83 @@ class AsyncLLMRAG:
             rag_system: 同步RAG系统实例
         """
         self.rag = rag_system
-        # 只保留 RAG 搜索的信号量
-        self.semaphore = asyncio.Semaphore(1)  # 限制同时只能有一个搜索请求
+        # 只针对RAG搜索的信号量
+        self.search_semaphore = asyncio.Semaphore(1)
         
     async def answer_question(self, query: str, return_context: bool = False, user_id: str = None) -> Dict[str, Any]:
         """异步回答问题"""
-        start_time = time.time()
-        request_id = f"{user_id}-{int(start_time)}"
-        logger_adapter = logging.LoggerAdapter(
+        try:
+            # 创建日志适配器
+            logger_adapter = logging.LoggerAdapter(
                 logger,
                 {'user_id': user_id}
             )
             
-        try:
+            start_total = time.time()
+            request_id = f"{user_id}-{int(start_total)}"
+            
             debug_logger.info(f"[{request_id}] AsyncLLMRAG 开始处理请求")
 
-            # 使用信号量控制 RAG 搜索
+            # 1. RAG搜索阶段 - 使用信号量
+            logger_adapter.info("开始检索相关文档。这一步需要等待约25秒⚠️⚠️⚠️。 "
+                              f"搜索参数: 粗召回top_k={self.rag.initial_top_k}, 精排final_top_k={self.rag.final_top_k}")
+            
+            search_start = time.time()
             debug_logger.info(f"[{request_id}] 等待获取 RAG 搜索信号量")
-            async with self.semaphore:
+            
+            async with self.search_semaphore:
                 debug_logger.info(f"[{request_id}] 获得 RAG 搜索信号量")
-                logger_adapter.info("获得 RAG 搜索信号量")
-
-                result = await asyncio.to_thread(
-                    self.rag.answer_question,
-                    query=query,
-                    return_context=return_context,
-                    user_id=user_id
-                )
-                debug_logger.info(f"[{request_id}] RAG 搜索完成")
                 
+                # 执行混合搜索和重排序
+                search_results = await asyncio.to_thread(
+                    search_with_rerank,
+                    query=query,
+                    hybrid_searcher=self.rag.hybrid_searcher,
+                    reranker=self.rag.reranker,
+                    initial_top_k=self.rag.initial_top_k,
+                    final_top_k=self.rag.final_top_k
+                )
+                
+                search_time = time.time() - search_start
+                logger_adapter.info(f"检索完成，耗时 {search_time:.2f}秒。精排序后 {len(search_results)} 条结果")
+                
+                # 2. 格式化上下文
+                logger_adapter.info("开始格式化上下文...")
+                format_start = time.time()
+                context = await asyncio.to_thread(
+                    self.rag._format_context,
+                    search_results
+                )
+                format_time = time.time() - format_start
+                logger_adapter.info(f"格式化完成，耗时 {format_time:.2f}秒，上下文长度: {len(context)} 字符")
+                
+                debug_logger.info(f"[{request_id}] RAG 搜索和上下文准备完成")
+
+            # 3. LLM生成阶段 - 不使用信号量
+            logger_adapter.info("开始生成答案...")
+            generate_start = time.time()
+            answer = await asyncio.to_thread(
+                self.rag._generate_answer,
+                query=query,
+                context=context,
+                user_id=user_id
+            )
+            generate_time = time.time() - generate_start
+            
+            total_time = time.time() - start_total
+            logger_adapter.info(f"答案生成完成，耗时 {generate_time:.2f}秒")
+            logger_adapter.info(f"总耗时: {total_time:.2f}秒 (检索: {search_time:.2f}秒, "
+                              f"格式化: {format_time:.2f}秒, 生成: {generate_time:.2f}秒)")
+            
+            debug_logger.info(f"[{request_id}] LLM 生成完成")
+            
+            result = {"answer": answer}
+            if return_context:
+                result["context"] = context
             return result
                 
         except Exception as e:
-            debug_logger.error(f"[{request_id}] AsyncLLMRAG 处理请求时出错: {str(e)}")
+            logger_adapter.error(f"生成回答时出错: {str(e)}")
             raise
 
 async def main():
