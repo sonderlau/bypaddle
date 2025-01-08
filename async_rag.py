@@ -136,7 +136,7 @@ async def main():
     
     # 配置
     DATA_PATH = "output/data_with_abstracts.json"
-    API_KEY = os.getenv("DASHSCOPE_API_KEY", "sk-c3b22834c96a4f368657ad8eafa1999f")
+    API_KEY = os.getenv("DASHSCOPE_API_KEY", "")
     
     # 初始化同步RAG系统
     sync_rag = LLMRAG(

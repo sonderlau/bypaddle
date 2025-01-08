@@ -155,7 +155,9 @@ def add_section_abstracts(data_path: str, index_path: str, output_path: str, api
 
 if __name__ == "__main__":
     # 从环境变量获取API密钥
-    api_key = "sk-c3b22834c96a4f368657ad8eafa1999f"
+    import os
+    # 从环境变量获取API密钥
+    api_key = os.getenv("DASH_SCOPE_API_KEY","")
 
         
     add_section_abstracts(

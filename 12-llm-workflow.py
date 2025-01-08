@@ -351,8 +351,10 @@ async def main():
     """测试工作流"""
     try:
         # 配置
+        import os   
+        # 配置
         DATA_PATH = "output/data_with_abstracts.json"
-        API_KEY = "sk-c3b22834c96a4f368657ad8eafa1999f"
+        API_KEY=os.getenv("DASH_SCOPE_API_KEY","")
         
         # 初始化 RAG 系统
         rag_system = LLMRAG(

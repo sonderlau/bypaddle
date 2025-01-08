@@ -483,8 +483,9 @@ class EnhancedPDFParser:
 def main():
     # 使用示例
     pdf_path = "your_pdf_file.pdf"  # 替换为实际的PDF路径
-    dashscope_api_key = "sk-c3b22834c96a4f368657ad8eafa1999f"  # 替换为实际的API密钥
-    
+    import os
+    # 从环境变量获取API密钥
+    dashscope_api_key = os.getenv("DASH_SCOPE_API_KEY","")
     parser = EnhancedPDFParser(dashscope_api_key)
     try:
         result_text = parser.process_pdf_with_tables(pdf_path)

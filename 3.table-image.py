@@ -121,7 +121,11 @@ class EnhancedTableParser:
 
 def main():
     # 使用示例
-    parser = EnhancedTableParser("sk-c3b22834c96a4f368657ad8eafa1999f")
+    import os
+    # 从环境变量获取API密钥
+    api_key = os.getenv("DASH_SCOPE_API_KEY","")
+
+    parser = EnhancedTableParser(api_key)
     try:
         result = parser.parse_table_with_vision("image.png")
         print("解析结果：")

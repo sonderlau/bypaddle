@@ -210,9 +210,10 @@ async def startup_event():
     global rag_instance, workflow_manager
     
     try:
-        # 配置参数
+        import os   
+        # 配置
         DATA_PATH = "output/data_with_abstracts.json"
-        API_KEY = "sk-c3b22834c96a4f368657ad8eafa1999f"
+        API_KEY=os.getenv("DASH_SCOPE_API_KEY","")
         
         # 初始化OpenAI客户端
         http_client = httpx.Client()  # 改用同步客户端

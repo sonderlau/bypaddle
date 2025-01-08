@@ -285,10 +285,10 @@ class LLMRAG:
             return f"抱歉，生成回答时出现错误: {str(e)}"
 
 def main():
+    import os   
     # 配置
     DATA_PATH = "output/data_with_abstracts.json"
-    API_KEY="sk-c3b22834c96a4f368657ad8eafa1999f"
-  # 替换为实际的API密钥
+    API_KEY=os.getenv("DASH_SCOPE_API_KEY","")
     
     # 初始化RAG系统
     rag = LLMRAG(

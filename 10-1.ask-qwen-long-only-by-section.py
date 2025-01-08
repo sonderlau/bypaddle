@@ -177,10 +177,13 @@ class DocumentQA:
 
 # 使用示例
 if __name__ == "__main__":
+    import os
+    # 从环境变量获取API密钥
+    dashscope_api_key = os.getenv("DASH_SCOPE_API_KEY","")
     qa = DocumentQA(
         index_path="output/index.json",
         data_path="output/data.json",
-        api_key="sk-c3b22834c96a4f368657ad8eafa1999f"
+        api_key=dashscope_api_key
     )
     
     # 测试问题
