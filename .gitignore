@@ -3,7 +3,7 @@ __pycache__/
 *.pyc
 .env
 # ChromaDB files
-chroma_db/
-
+chroma_db/*
+models/*
 # Debug logs
 debug.log

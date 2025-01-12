@@ -8,6 +8,7 @@ import numpy as np
 from chromadb import Client
 import chromadb
 from tqdm import tqdm
+from modelscope.hub.snapshot_download import snapshot_download
 
 # 配置日志
 logging.basicConfig(
@@ -17,17 +18,20 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 class VectorProcessor:
-    def __init__(self, model_name: str = 'BAAI/bge-large-zh-v1.5', persist_directory: str = "./chroma_db"):
+    def __init__(self, model_name: str = 'BAAI/bge-large-zh-v1.5', cache_dir: str = './models', persist_directory: str = "./chroma_db"):
         """初始化向量处理器
         
         Args:
-            model_name: HuggingFace模型名称
+            model_name: ModelScope模型名称
+            cache_dir: 模型缓存目录
             persist_directory: ChromaDB持久化目录
         """
         logger.info(f"初始化向量处理器，使用模型: {model_name}")
         try:
-            self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-            self.model = AutoModel.from_pretrained(model_name)
+            # 使用ModelScope下载/加载模型
+            model_dir = snapshot_download(model_name, cache_dir=cache_dir)
+            self.tokenizer = AutoTokenizer.from_pretrained(model_dir)
+            self.model = AutoModel.from_pretrained(model_dir)
             self.model.eval()
             
             # 设备选择逻辑

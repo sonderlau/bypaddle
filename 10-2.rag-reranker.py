@@ -7,6 +7,7 @@ import os
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
 import torch
 import importlib.util
+from modelscope.hub.snapshot_download import snapshot_download
 
 # 动态导入以数字开头的模块
 spec = importlib.util.spec_from_file_location("vector_processor", "7-1.vector-with-abstract.py")
@@ -68,9 +69,17 @@ class HybridSearcher:
         return final_scores[:top_k]
 
 class Reranker:
-    def __init__(self, model_name="BAAI/bge-reranker-large"):
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-        self.model = AutoModelForSequenceClassification.from_pretrained(model_name)
+    def __init__(self, model_name="BAAI/bge-reranker-large", cache_dir: str = './models'):
+        """初始化重排序器
+        
+        Args:
+            model_name: ModelScope模型名称
+            cache_dir: 模型缓存目录
+        """
+        # 使用ModelScope下载/加载模型
+        model_dir = snapshot_download(model_name, cache_dir=cache_dir)
+        self.tokenizer = AutoTokenizer.from_pretrained(model_dir)
+        self.model = AutoModelForSequenceClassification.from_pretrained(model_dir)
         self.model.eval()
         
         # 设备选择
