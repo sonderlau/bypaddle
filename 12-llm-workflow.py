@@ -347,6 +347,84 @@ class WorkflowManager:
             debug_logger.info(f"[{request_id}] 请求处理完成，总耗时: {total_time:.2f}秒")
             logger_adapter.info(f"请求处理完成，总耗时: {total_time:.2f}秒")
 
+    async def process_message_stream(self, user_id: str, message: str, return_context: bool = True):
+        """处理用户消息并生成流式回答"""
+        start_time = time.time()
+        request_id = f"{user_id}-{int(start_time)}"
+        
+        try:
+            debug_logger.info(f"[{request_id}] 新请求开始处理")
+            logger_adapter = logging.LoggerAdapter(
+                logger,
+                {'user_id': user_id}
+            )
+            
+            logger_adapter.info("开始处理用户消息")
+            
+            # 记录用户消息
+            self.conversation_manager.add_message(user_id, "user", message)
+            
+            # 获取历史记录
+            history = self.conversation_manager.get_history(user_id)
+            debug_logger.info(f"[{request_id}] 历史记录获取完成，数量: {len(history)}")
+            
+            # 判断意图
+            intent_start = time.time()
+            is_handbook_query = await self.handbook_processor.is_handbook_related(user_id, message)
+            debug_logger.info(f"[{request_id}] 意图判断完成，耗时: {time.time() - intent_start:.2f}秒, 结果: {'手册相关' if is_handbook_query else '一般对话'}")
+            
+            if is_handbook_query:
+                debug_logger.info(f"[{request_id}] 开始处理手册相关查询")
+                
+                # 改写查询
+                rewrite_start = time.time()
+                rewritten_query = await self.handbook_processor.rewrite_query(user_id, message, history)
+                logger_adapter.info(f"查询改写完成，耗时: {time.time() - rewrite_start:.2f}秒")
+                logger_adapter.info(f"原始查询: {message}")
+                logger_adapter.info(f"改写后: {rewritten_query}")
+                
+                # 流式生成答案
+                async for response in self.async_rag.answer_question_stream(
+                    query=rewritten_query,
+                    return_context=return_context,
+                    user_id=user_id
+                ):
+                    yield response
+                
+            else:
+                debug_logger.info(f"[{request_id}] 开始处理一般对话")
+                logger_adapter.info("开始处理一般对话")
+                chat_start = time.time()
+                
+                try:
+                    response = await self.chat_manager.handle_general_chat(message)
+                    debug_logger.info(f"[{request_id}] 对话处理完成，耗时: {time.time() - chat_start:.2f}秒")
+                    
+                    # 将普通回答转换为流式格式
+                    yield {
+                        "type": "token",
+                        "content": response
+                    }
+                    
+                except Exception as e:
+                    debug_logger.error(f"[{request_id}] 处理一般对话时出错: {str(e)}")
+                    raise
+                
+            self.conversation_manager.add_message(
+                user_id, "assistant", response, intent="chat" if not is_handbook_query else "handbook"
+            )
+                
+        except Exception as e:
+            debug_logger.error(f"[{request_id}] 处理消息时出错: {str(e)}")
+            yield {
+                "type": "error",
+                "content": f"处理您的请求时出错: {str(e)}"
+            }
+        finally:
+            total_time = time.time() - start_time
+            debug_logger.info(f"[{request_id}] 请求处理完成，总耗时: {total_time:.2f}秒")
+            logger_adapter.info(f"请求处理完成，总耗时: {total_time:.2f}秒")
+
 async def main():
     """测试工作流"""
     try:

@@ -129,6 +129,68 @@ class AsyncLLMRAG:
             logger_adapter.error(f"生成回答时出错: {str(e)}")
             raise
 
+    async def answer_question_stream(self, query: str, return_context: bool = False, user_id: str = None):
+        """异步流式回答问题"""
+        try:
+            # 创建日志适配器
+            logger_adapter = logging.LoggerAdapter(
+                logger,
+                {'user_id': user_id}
+            )
+            
+            start_total = time.time()
+            request_id = f"{user_id}-{int(start_total)}"
+            
+            debug_logger.info(f"[{request_id}] AsyncLLMRAG 开始处理流式请求")
+
+            # 1. RAG搜索阶段 - 使用信号量
+            logger_adapter.info("开始检索相关文档...")
+            
+            search_start = time.time()
+            debug_logger.info(f"[{request_id}] 等待获取 RAG 搜索信号量")
+            
+            async with self.search_semaphore:
+                debug_logger.info(f"[{request_id}] 获得 RAG 搜索信号量")
+                
+                # 执行混合搜索和重排序
+                search_results = await asyncio.to_thread(
+                    search_with_rerank,
+                    query=query,
+                    hybrid_searcher=self.rag.hybrid_searcher,
+                    reranker=self.rag.reranker,
+                    initial_top_k=self.rag.initial_top_k,
+                    final_top_k=self.rag.final_top_k
+                )
+                
+                search_time = time.time() - search_start
+                logger_adapter.info(f"检索完成，耗时 {search_time:.2f}秒。精排序后 {len(search_results)} 条结果")
+                
+                # 2. 格式化上下文
+                context = self.rag._format_context(search_results)
+                
+                debug_logger.info(f"[{request_id}] RAG 搜索和上下文准备完成")
+
+            # 3. 流式生成答案
+            async for token in self.rag._generate_answer_stream(query, context, user_id):
+                yield {
+                    "type": "token",
+                    "content": token
+                }
+            
+            # 4. 如果需要，发送上下文
+            if return_context:
+                yield {
+                    "type": "context",
+                    "content": context
+                }
+
+        except Exception as e:
+            logger_adapter.error(f"生成回答时出错: {str(e)}")
+            yield {
+                "type": "error",
+                "content": str(e)
+            }
+
 async def main():
     """测试同步和异步RAG系统的性能对比"""
     from time import time

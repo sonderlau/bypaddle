@@ -136,7 +136,7 @@ class DocumentQA:
         return "\n".join(content)
         
     def answer_question(self, query: str) -> str:
-        """回答用户问题
+        """回答用户问题（非流式）
         
         Args:
             query: 用户问题
@@ -175,19 +175,70 @@ class DocumentQA:
         ret = ret.replace("\n", "").replace("```", "")
         return ret
 
-# 使用示例
+    async def answer_question_stream(self, query: str):
+        """流式回答用户问题
+        
+        Args:
+            query: 用户问题
+            
+        Yields:
+            生成的答案片段
+        """
+        # 1. 找到相关章节
+        relevant_section = self._find_relevant_section(query)
+        # 2. 获取章节内容
+        context = self._get_section_content(relevant_section)
+        
+        # 3. 构建最终提示词
+        prompt = f"""请基于以下背景信息回答用户的问题。如果无法从背景信息中找到答案，请明确说明。
+回答要准确、完整，并尽可能直接引用原文的具体内容。
+
+背景信息：
+=======
+{context}
+=======
+用户问题：{query}
+"""
+        logging.info(f"根据学生手册进行流式回答: {prompt}")
+
+        # 4. 调用LLM生成流式答案
+        response = self.client.chat.completions.create(
+            model="qwen-long",
+            messages=[{
+                "role": "user",
+                "content": prompt
+            }],
+            temperature=0.2,
+            stream=True
+        )
+        
+        for chunk in response:
+            if chunk.choices[0].delta.content is not None:
+                yield chunk.choices[0].delta.content
+
+# 使用示例更新
 if __name__ == "__main__":
     import os
-    # 从环境变量获取API密钥
-    dashscope_api_key = os.getenv("DASH_SCOPE_API_KEY","")
-    qa = DocumentQA(
-        index_path="output/index.json",
-        data_path="output/data.json",
-        api_key=dashscope_api_key
-    )
+    import asyncio
     
-    # 测试问题
-    question = "毕业设计有几个学分？"
-    answer = qa.answer_question(question)
-    print(f"问题：{question}")
-    print(f"答案：{answer}")
+    async def main():
+        # 从环境变量获取API密钥
+        dashscope_api_key = os.getenv("DASH_SCOPE_API_KEY","")
+        qa = DocumentQA(
+            index_path="output/index.json",
+            data_path="output/data.json",
+            api_key=dashscope_api_key
+        )
+        
+        # 测试问题
+        question = "毕业设计有几个学分？"
+        
+        # 测试流式回答
+        print(f"问题：{question}")
+        print("流式答案：", end="", flush=True)
+        async for chunk in qa.answer_question_stream(question):
+            print(chunk, end="", flush=True)
+        print()  # 打印换行
+
+    # 运行异步主函数
+    asyncio.run(main())

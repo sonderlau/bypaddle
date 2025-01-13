@@ -9,6 +9,7 @@ import importlib.util
 import httpx
 import time
 from datetime import datetime  # 修改这里
+import asyncio
 
 # 动态导入向量处理器
 spec = importlib.util.spec_from_file_location("vector_processor", "7-1.vector-with-abstract.py")
@@ -284,11 +285,97 @@ class LLMRAG:
             logger.error(f"生成回答时出错: {str(e)}")
             return f"抱歉，生成回答时出现错误: {str(e)}"
 
+    async def _generate_answer_stream(self, query: str, context: str, user_id: str = None):
+        """使用LLM生成答案并进行流式传输"""
+        prompt = f"""请基于以下参考信息回答用户的问题。要求：
+1. 答案必须准确，与参考信息保持一致
+2. 如果参考信息不足以完整回答问题，请明确指出
+3. 合理组织答案结构，适当分点说明
+4. 可以直接引用原文内容，注意语言流畅
+5. 如果有页码，请在答案中说明可以查阅手册的页码
+
+
+参考信息：
+==========
+{context}
+==========
+
+用户问题：{query}
+
+
+请生成解答："""
+
+        try:
+            print(f"开始***流式***生成答案。使用模型：{self.model_name}")
+            chunk_count = 0
+            token_count = 0
+            
+            stream = self.client.chat.completions.create(
+                model=self.model_name,
+                messages=[{
+                    "role": "user",
+                    "content": prompt
+                }],
+                temperature=0.7,
+                stream=True
+            )
+
+            for chunk in stream:
+                logger.debug(chunk)
+                chunk_count += 1
+                if chunk.choices[0].delta.content is not None:
+                    token = chunk.choices[0].delta.content
+                    token_count += len(token)
+                    print(f"收到第 {chunk_count} 个chunk，token: {token!r}")
+                    yield token
+                    await asyncio.sleep(0.05)  # 增加小延迟确保分段发送
+            
+            logger.info(f"流式生成完成。共产生 {chunk_count} 个chunks，{token_count} 个字符")
+            
+        except Exception as e:
+            logger.error(f"生成答案时出错: {str(e)}")
+            raise
+
+    async def answer_question_stream(self, query: str, return_context: bool = False, user_id: str = None):
+        """异步流式回答问题"""
+        try:
+            # 1. 检索相关文档
+            print("开始检索相关文档...")
+            search_results = await asyncio.to_thread(
+                search_with_rerank,
+                query=query,
+                hybrid_searcher=self.hybrid_searcher,
+                reranker=self.reranker,
+                initial_top_k=self.initial_top_k,
+                final_top_k=self.final_top_k
+            )
+            
+            # 2. 格式化上下文
+            context = self._format_context(search_results)
+            
+            # 3. 流式生成答案
+            async for token in self._generate_answer_stream(query, context, user_id):
+                yield {
+                    "type": "token",
+                    "content": token
+                }
+            
+            # 4. 在答案结束后发送上下文（如果需要）
+            if return_context:
+                yield {
+                    "type": "context",
+                    "content": context
+                }
+
+        except Exception as e:
+            print(f"生成回答时出错: {str(e)}")
+            raise
+
 def main():
     import os   
     # 配置
     DATA_PATH = "output/data_with_abstracts.json"
-    API_KEY=os.getenv("DASH_SCOPE_API_KEY","")
+    API_KEY = os.getenv("DASH_SCOPE_API_KEY","")
     
     # 初始化RAG系统
     rag = LLMRAG(
@@ -296,23 +383,30 @@ def main():
         api_key=API_KEY
     )
     
-    # 测试问题
-    test_queries = [
-        "学籍异动包括哪些情况？",
-        "学生申请休学的流程是什么？",
-    ]
-    
-    # 测试回答
-    for query in test_queries:
-        print(f"\n问题：{query}")
+    # 测试流式回答
+    async def test_stream():
+        test_query = "讲个故事"
+        print(f"\n\n=== 测试流式回答 ===")
+        print(f"\n问题：{test_query}")
+        print("\n答案：")
+        
         try:
-            result = rag.answer_question(query, return_context=True)
-            print("\n答案：")
-            print(result["answer"])
-            print("\n参考上下文：")
-            print(result["context"])
+            async for response in rag.answer_question_stream(
+                query=test_query,
+                return_context=True,
+                user_id="test_user"
+            ):
+                if response["type"] == "token":
+                    print(response["content"], end="", flush=True)
+                elif response["type"] == "context":
+                    print("\n\n参考上下文：")
+                    print(response["content"])
         except Exception as e:
-            logger.error(f"处理问题时出错：{str(e)}")
+            print(f"\n处理流式回答时出错：{str(e)}")
+    
+    # 运行流式测试
+    import asyncio
+    asyncio.run(test_stream())
             
 if __name__ == "__main__":
     main()

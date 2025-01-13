@@ -539,108 +539,182 @@
             return `Basic ${credentials}`;
         }
 
-        async function askQuestion() {
-            const input = document.getElementById('questionInput');
-            const question = input.value.trim();
-            if (!question) return;
+        // 问答 WebSocket 管理
+        let askSocket;
+        let currentMessageDiv = null;
+        let currentMessageContent = '';
 
-            addMessage(question, true);
-            input.value = '';
-            document.getElementById('loading').style.display = 'block';
+        function setupAskWebSocket() {
+            const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const authHeader = getAuthHeader();
             
-            try {
-                const response = await fetch('/api/ask', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': getAuthHeader()  // 添加认证头
-                    },
-                    body: JSON.stringify({
-                        question: question,
-                        return_context: true,
-                        user_id: userId
-                    })
-                });
-
-                const data = await response.json();
-                if (response.ok) {
-                    addMessage(data.answer, false, data.context);
-                } else {
-                    addMessage('抱歉，我遇到了一些问题，请稍后再试。', false);
+            askSocket = new WebSocket(`${wsProtocol}//${window.location.host}/ws/ask`);
+            
+            askSocket.onopen = () => {
+                console.log("问答 WebSocket 连接已建立");
+            };
+            
+            askSocket.onmessage = (event) => {
+                console.debug("收到WebSocket消息:", event.data);  // 添加调试日志
+                const data = JSON.parse(event.data);
+                
+                switch(data.type) {
+                    case 'token':
+                        console.debug(`处理token: ${data.content}`);  // 添加调试日志
+                        handleToken(data.content);
+                        break;
+                    case 'context':
+                        console.debug("处理context");  // 添加调试日志
+                        handleContext(data.content);
+                        break;
+                    case 'error':
+                        console.error("处理error:", data.content);  // 添加调试日志
+                        handleError(data.content);
+                        break;
+                    case 'done':
+                        console.debug("处理done");  // 添加调试日志
+                        handleDone();
+                        break;
                 }
-            } catch (error) {
-                addMessage('抱歉，服务出现错误，请稍后再试。', false);
-            }
-
-            document.getElementById('loading').style.display = 'none';
+            };
+            
+            askSocket.onclose = () => {
+                console.log("问答 WebSocket 连接已关闭");
+                setTimeout(setupAskWebSocket, 3000);
+            };
+            
+            askSocket.onerror = (error) => {
+                console.error("问答 WebSocket 错误:", error);
+            };
         }
 
-        function addMessage(text, isUser, context = null) {
-            const messagesDiv = document.getElementById('chatMessages');
-            const messageDiv = document.createElement('div');
-            messageDiv.className = `message ${isUser ? 'user' : 'bot'}`;
+        function handleToken(token) {
+            console.debug(`收到token: ${token}`);  // 添加调试日志
+            
+            if (!currentMessageDiv) {
+                currentMessageDiv = document.createElement('div');
+                currentMessageDiv.className = 'message bot';
+                const contentDiv = document.createElement('div');
+                contentDiv.className = 'message-content';
+                currentMessageDiv.appendChild(contentDiv);
+                document.getElementById('chatMessages').appendChild(currentMessageDiv);
+            }
+            
+            // 累积内容
+            currentMessageContent += token;
+            
+            // 使用 marked 渲染 Markdown
+            const contentDiv = currentMessageDiv.querySelector('.message-content');
+            
+            // 如果内容包含完整的 Markdown 标记，才使用 marked 渲染
+            if (isCompleteMarkdown(currentMessageContent)) {
+                contentDiv.innerHTML = marked.parse(currentMessageContent);
+            } else {
+                // 否则直接显示文本
+                contentDiv.textContent = currentMessageContent;
+            }
+            
+            // 滚动到底部
+            document.getElementById('chatMessages').scrollTop = document.getElementById('chatMessages').scrollHeight;
+        }
 
-            const contentDiv = document.createElement('div');
-            contentDiv.className = 'message-content';
-            contentDiv.innerHTML = marked.parse(text);
-            messageDiv.appendChild(contentDiv);
+        // 添加判断是否是完整 Markdown 的函数
+        function isCompleteMarkdown(text) {
+            // 检查是否包含完整的 Markdown 标记
+            const markdownPatterns = [
+                /^#+ .+$/m,  // 标题
+                /\*\*.+\*\*/,  // 粗体
+                /\*.+\*/,  // 斜体
+                /^\d\. .+$/m,  // 有序列表
+                /^- .+$/m,  // 无序列表
+                /^>.+$/m,  // 引用
+                /`.+`/,  // 行内代码
+                /^```[\s\S]+```$/m  // 代码块
+            ];
+            
+            return markdownPatterns.some(pattern => pattern.test(text));
+        }
 
-            if (context && !isUser) {
+        function handleContext(context) {
+            if (currentMessageDiv) {
                 const contextDiv = document.createElement('div');
                 contextDiv.className = 'context';
-                
-                // 使用 details 和 summary 实现折叠效果
                 contextDiv.innerHTML = `
                     <details>
-                        <summary>
-                            参考依据
-                            <span class="context-count">(${context.split('\n').length} 行)</span>
-                        </summary>
+                        <summary>参考依据</summary>
                         <div class="context-content">
                             ${marked.parse(context)}
                         </div>
                     </details>
                 `;
-
-                // 添加展开/折叠事件监听
-                const details = contextDiv.querySelector('details');
-                details.addEventListener('toggle', function() {
-                    if (this.open) {
-                        messagesDiv.scrollTop = messagesDiv.scrollHeight;
-                    }
-                });
-
-                contentDiv.appendChild(contextDiv);
+                currentMessageDiv.querySelector('.message-content').appendChild(contextDiv);
+                
+                // 滚动到底部
+                document.getElementById('chatMessages').scrollTop = document.getElementById('chatMessages').scrollHeight;
             }
-
-            messagesDiv.appendChild(messageDiv);
-            messagesDiv.scrollTop = messagesDiv.scrollHeight;
         }
 
-        // WebSocket连接管理
-        let ws;
+        function handleError(error) {
+            addMessage(`错误: ${error}`, false);
+            document.getElementById('loading').style.display = 'none';
+        }
+
+        function handleDone() {
+            currentMessageDiv = null;
+            currentMessageContent = '';
+            document.getElementById('loading').style.display = 'none';
+        }
+
+        // 修改 askQuestion 函数
+        async function askQuestion() {
+            const input = document.getElementById('questionInput');
+            const question = input.value.trim();
+            if (!question) return;
+            
+            // 添加用户消息
+            addMessage(question, true);
+            input.value = '';
+            document.getElementById('loading').style.display = 'block';
+            
+            // 重置当前消息状态
+            currentMessageDiv = null;
+            currentMessageContent = '';
+            
+            // 通过 WebSocket 发送问题
+            if (askSocket && askSocket.readyState === WebSocket.OPEN) {
+                askSocket.send(JSON.stringify({
+                    question: question,
+                    user_id: userId,
+                    return_context: true
+                }));
+            } else {
+                addMessage('连接已断开，请刷新页面重试', false);
+                document.getElementById('loading').style.display = 'none';
+            }
+        }
+
+        // 添加日志 WebSocket 管理
+        let logSocket;
         let reconnectAttempts = 0;
         const MAX_RECONNECT_ATTEMPTS = 5;
 
-        function setupWebSocket() {
-            console.log("开始初始化 WebSocket..."); // 添加调试日志
-            // 如果已经存在连接，先关闭它
-            if (ws) {
-                ws.close();
+        function setupLogWebSocket() {
+            console.log("开始初始化日志 WebSocket...");
+            if (logSocket) {
+                logSocket.close();
             }
             
-            // 构建带认证的 WebSocket URL
             const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
             const authHeader = getAuthHeader();
-            ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws`, [], {
+            logSocket = new WebSocket(`${wsProtocol}//${window.location.host}/ws`, [], {
                 headers: {
                     'Authorization': authHeader
                 }
             });
             
-            ws.onopen = function() {
-                console.log("WebSocket连接已建立");
-                reconnectAttempts = 0;  // 重置重连计数
+            logSocket.onopen = function() {
+                console.log("日志 WebSocket 连接已建立");
+                reconnectAttempts = 0;
                 addLogEntry({ 
                     type: "status", 
                     message: "系统已连接",
@@ -648,72 +722,42 @@
                 });
             };
             
-            ws.onmessage = function(event) {
+            logSocket.onmessage = function(event) {
                 try {
                     const data = JSON.parse(event.data);
                     const currentUserId = sessionStorage.getItem('user_id');
                     
-                    // 添加调试日志
-                    console.log('收到WebSocket消息:', {
-                        messageUserId: data.user_id,
-                        currentUserId: currentUserId,
-                        fullMessage: data
-                    });
-                    
-                    // 只有当消息中的user_id与当前用户的user_id匹配时才显示
                     if (data.user_id === currentUserId) {
-                        console.log('显示消息 - ID匹配');
-                        if (data.type === 'chat') {
-                            addMessage(data.message, false, data.context);
-                        } else if (data.type === 'log' || data.type === 'status') {
+                        if (data.type === 'log' || data.type === 'status') {
                             addLogEntry(data);
                         }
-                    } else {
-                        console.log('忽略消息 - ID不匹配');
                     }
                 } catch (error) {
-                    console.error("处理WebSocket消息时出错:", error);
+                    console.error("处理日志 WebSocket 消息时出错:", error);
                 }
             };
             
-            ws.onclose = function() {
-                console.log("WebSocket连接已关闭");
+            logSocket.onclose = function() {
+                console.log("日志 WebSocket 连接已关闭");
                 if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
                     reconnectAttempts++;
                     console.log(`尝试重新连接... (${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`);
-                    setTimeout(setupWebSocket, 3000);  // 3秒后重试
+                    setTimeout(setupLogWebSocket, 3000);
                 }
             };
             
-            ws.onerror = function(error) {
-                console.error("WebSocket错误:", error);
+            logSocket.onerror = function(error) {
+                console.error("日志 WebSocket 错误:", error);
             };
         }
 
-        // 添加登录处理
-        async function handleLogin() {
-            try {
-                const response = await fetch('/health', {
-                    headers: {
-                        'Authorization': getAuthHeader()
-                    }
-                });
-                
-                if (response.ok) {
-                    // 登录成功，初始化 WebSocket
-                    setupWebSocket();  // 只在这里调用一次
-                    return true;
-                }
-            } catch (error) {
-                console.error('登录失败:', error);
-            }
-            return false;
-        }
-
-        // 页面加载时进行登录
+        // 修改 window.onload
         window.onload = async function() {
             const loginSuccess = await handleLogin();
-            if (!loginSuccess) {
+            if (loginSuccess) {
+                setupLogWebSocket();  // 初始化日志 WebSocket
+                setupAskWebSocket();  // 初始化问答 WebSocket
+            } else {
                 addMessage('认证失败，请刷新页面重试。', false);
             }
         };
@@ -806,6 +850,55 @@
             headerIds: false,  // 禁用标题自动ID
             mangle: false      // 禁用标题ID混淆
         });
+
+        function addMessage(text, isUser, context = null) {
+            const messagesDiv = document.getElementById('chatMessages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${isUser ? 'user' : 'bot'}`;
+
+            const contentDiv = document.createElement('div');
+            contentDiv.className = 'message-content';
+            contentDiv.innerHTML = marked.parse(text);
+            messageDiv.appendChild(contentDiv);
+
+            if (context && !isUser) {
+                const contextDiv = document.createElement('div');
+                contextDiv.className = 'context';
+                contextDiv.innerHTML = `
+                    <details>
+                        <summary>
+                            参考依据
+                            <span class="context-count">(${context.split('\n').length} 行)</span>
+                        </summary>
+                        <div class="context-content">
+                            ${marked.parse(context)}
+                        </div>
+                    </details>
+                `;
+
+                contentDiv.appendChild(contextDiv);
+            }
+
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        async function handleLogin() {
+            try {
+                const response = await fetch('/health', {
+                    headers: {
+                        'Authorization': getAuthHeader()
+                    }
+                });
+                
+                if (response.ok) {
+                    return true;
+                }
+            } catch (error) {
+                console.error('登录失败:', error);
+            }
+            return false;
+        }
     </script>
 </body>
 </html>

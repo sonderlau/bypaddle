@@ -328,6 +328,70 @@ async def download_manual(username: str = Depends(get_current_username)):
         media_type="application/pdf"
     )
 
+@app.websocket("/ws/ask")
+async def websocket_ask_endpoint(websocket: WebSocket):
+    """处理流式问答的 WebSocket 连接"""
+    try:
+        # 验证认证
+        auth_header = websocket.headers.get('authorization')
+        if not auth_header or not auth_header.startswith('Basic '):
+            await websocket.close(code=1008)
+            return
+            
+        import base64
+        auth_decoded = base64.b64decode(auth_header[6:]).decode('utf-8')
+        username, password = auth_decoded.split(':')
+        
+        if not (secrets.compare_digest(username, ADMIN_USERNAME) and 
+                secrets.compare_digest(password, ADMIN_PASSWORD)):
+            await websocket.close(code=1008)
+            return
+            
+        await websocket.accept()
+        logger.info("问答 WebSocket 连接已建立")
+        
+        while True:
+            try:
+                # 接收前端发送的问题
+                data = await websocket.receive_json()
+                question = data.get('question')
+                user_id = data.get('user_id')
+                return_context = data.get('return_context', True)
+                
+                if not question or not user_id:
+                    await websocket.send_json({
+                        "type": "error",
+                        "content": "无效的请求数据"
+                    })
+                    continue
+                
+                # 流式生成答案
+                async for response in workflow_manager.process_message_stream(
+                    user_id=user_id,
+                    message=question,
+                    return_context=return_context
+                ):
+                    await websocket.send_json(response)
+                    
+                # 发送完成标记
+                await websocket.send_json({
+                    "type": "done",
+                    "content": None
+                })
+                
+            except Exception as e:
+                logger.error(f"处理问题时出错: {str(e)}")
+                await websocket.send_json({
+                    "type": "error",
+                    "content": f"处理问题时出错: {str(e)}"
+                })
+                
+    except Exception as e:
+        logger.error(f"WebSocket 连接出错: {str(e)}")
+    finally:
+        await websocket.close()
+        logger.info("问答 WebSocket 连接已断开")
+
 def main():
     """主函数"""
     # 运行服务器
