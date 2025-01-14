@@ -16,88 +16,19 @@
         }
         .main-container {
             display: flex;
-            gap: 20px;
-            max-width: 1400px;
+            max-width: 1000px;
             margin: 0 auto;
             height: calc(100vh - 40px);
             padding-bottom: 50px;
         }
         .chat-container {
-            flex: 3;
-            background: white;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            display: flex;
-            flex-direction: column;
-            min-width: 400px;
-        }
-        .log-container {
-            flex: 2;
+            flex: 1;
             background: white;
             border-radius: 10px;
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
             display: flex;
             flex-direction: column;
             min-width: 300px;
-            border: 2px solid #e1e4e8;
-        }
-        .log-header {
-            padding: 15px;
-            background-color: #f6f8fa;
-            border-bottom: 1px solid #e1e4e8;
-            text-align: center;
-        }
-        .log-header h2 {
-            margin: 0;
-            color: #24292e;
-        }
-        .log-content {
-            flex: 1;
-            overflow-y: auto;
-            padding: 15px;
-            font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
-            font-size: 13px;
-            line-height: 1.4;
-            background-color: #f8f9fa;
-            color: #24292e;
-        }
-        .log-entry {
-            margin-bottom: 8px;
-            padding: 6px 8px;
-            border-radius: 3px;
-            background-color: #fff;
-            border: 1px solid #e1e4e8;
-            animation: fadeIn 0.3s ease-in;
-            white-space: pre-wrap;
-            word-wrap: break-word;
-            font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
-        }
-        .log-entry.status {
-            background-color: #e3f2fd;
-            border-color: #90caf9;
-            font-weight: bold;
-        }
-        .log-entry.info {
-            background-color: #f5f5f5;
-            border-color: #e0e0e0;
-        }
-        .log-entry.error {
-            background-color: #ffebee;
-            border-color: #ffcdd2;
-            color: #c62828;
-        }
-        .log-entry.http {
-            background-color: #f3e5f5;
-            border-color: #ce93d8;
-            font-size: 0.9em;
-        }
-        .log-entry.time {
-            color: #666;
-            font-size: 0.85em;
-            padding: 2px 8px;
-            background-color: transparent;
-            border: none;
-            margin-bottom: 2px;
         }
         .chat-header {
             padding: 20px;
@@ -499,14 +430,6 @@
                 <button onclick="askQuestion()">发送</button>
             </div>
         </div>
-        <div class="log-container">
-            <div class="log-header">
-                <h2>系统日志</h2>
-            </div>
-            <div class="log-content" id="logContent">
-                <!-- Log entries will be added here -->
-            </div>
-        </div>
     </div>
     <footer class="footer">
         <span class="footer-icon">ℹ️</span>
@@ -515,10 +438,7 @@
         </span>
     </footer>
     <script>
-        // 从服务器端获取认证信息
-        const ADMIN_USERNAME = 'admin';
-        const ADMIN_PASSWORD = 'password123';
-        
+        // 添加回 handleKeyPress 函数
         function handleKeyPress(event) {
             if (event.key === 'Enter') {
                 askQuestion();
@@ -533,12 +453,6 @@
         }
         console.log("[用户ID] 当前会话ID:", userId);
 
-        // 添加获取认证信息的函数
-        function getAuthHeader() {
-            const credentials = btoa(`${ADMIN_USERNAME}:${ADMIN_PASSWORD}`);
-            return `Basic ${credentials}`;
-        }
-
         // 问答 WebSocket 管理
         let askSocket;
         let currentMessageDiv = null;
@@ -546,12 +460,20 @@
 
         function setupAskWebSocket() {
             const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const authHeader = getAuthHeader();
             
             askSocket = new WebSocket(`${wsProtocol}//${window.location.host}/ws/ask`);
             
             askSocket.onopen = () => {
                 console.log("问答 WebSocket 连接已建立");
+                // 添加系统连接状态提示
+                const statusDiv = document.createElement('div');
+                statusDiv.className = 'message bot';
+                statusDiv.innerHTML = `
+                    <div class="message-content" style="background-color: #e8f5e9; color: #2e7d32; font-size: 14px; padding: 8px 12px;">
+                        ✅ 系统已连接，可以开始提问
+                    </div>
+                `;
+                document.getElementById('chatMessages').appendChild(statusDiv);
             };
             
             askSocket.onmessage = (event) => {
@@ -693,163 +615,10 @@
             }
         }
 
-        // 添加日志 WebSocket 管理
-        let logSocket;
-        let reconnectAttempts = 0;
-        const MAX_RECONNECT_ATTEMPTS = 5;
-
-        function setupLogWebSocket() {
-            console.log("开始初始化日志 WebSocket...");
-            if (logSocket) {
-                logSocket.close();
-            }
-            
-            const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const authHeader = getAuthHeader();
-            logSocket = new WebSocket(`${wsProtocol}//${window.location.host}/ws`, [], {
-                headers: {
-                    'Authorization': authHeader
-                }
-            });
-            
-            logSocket.onopen = function() {
-                console.log("日志 WebSocket 连接已建立");
-                reconnectAttempts = 0;
-                addLogEntry({ 
-                    type: "status", 
-                    message: "系统已连接",
-                    status: "status" 
-                });
-            };
-            
-            logSocket.onmessage = function(event) {
-                try {
-                    const data = JSON.parse(event.data);
-                    const currentUserId = sessionStorage.getItem('user_id');
-                    
-                    if (data.user_id === currentUserId) {
-                        if (data.type === 'log' || data.type === 'status') {
-                            addLogEntry(data);
-                        }
-                    }
-                } catch (error) {
-                    console.error("处理日志 WebSocket 消息时出错:", error);
-                }
-            };
-            
-            logSocket.onclose = function() {
-                console.log("日志 WebSocket 连接已关闭");
-                if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
-                    reconnectAttempts++;
-                    console.log(`尝试重新连接... (${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`);
-                    setTimeout(setupLogWebSocket, 3000);
-                }
-            };
-            
-            logSocket.onerror = function(error) {
-                console.error("日志 WebSocket 错误:", error);
-            };
-        }
-
         // 修改 window.onload
         window.onload = async function() {
-            const loginSuccess = await handleLogin();
-            if (loginSuccess) {
-                setupLogWebSocket();  // 初始化日志 WebSocket
-                setupAskWebSocket();  // 初始化问答 WebSocket
-            } else {
-                addMessage('认证失败，请刷新页面重试。', false);
-            }
+            setupAskWebSocket();
         };
-
-        // 修改addLogEntry函数，增加错误处理和持久化
-        function addLogEntry(message) {
-            try {
-                const logContent = document.getElementById('logContent');
-                if (!logContent) {
-                    console.error("找不到日志容器元素");
-                    return;
-                }
-
-                // 解析消息数据
-                const data = typeof message === 'string' ? { message } : message;
-                const text = data.message;
-                
-                // 时间戳处理
-                const timeMatch = text.match(/^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3})/);
-                if (timeMatch) {
-                    const timeEntry = document.createElement('div');
-                    timeEntry.className = 'log-entry time';
-                    timeEntry.textContent = timeMatch[1];
-                    logContent.appendChild(timeEntry);
-                    message = text.substring(timeMatch[0].length);
-                }
-
-                // 创建日志条目
-                const entry = document.createElement('div');
-                entry.className = `log-entry ${data.status || 'default'}`;
-                
-                // 清理日志消息
-                const cleanedMessage = text.replace(/^(\s*-\s*(INFO|ERROR|WARNING)\s*-\s*)/, '');
-                entry.textContent = cleanedMessage;
-                
-                // 添加动画效果
-                entry.style.animation = 'fadeIn 0.3s ease-in';
-                
-                // 添加到容器
-                logContent.appendChild(entry);
-                
-                // 自动滚动到底部
-                logContent.scrollTop = logContent.scrollHeight;
-                
-                // 限制日志数量，保留最新的100条
-                const maxLogs = 100;
-                while (logContent.children.length > maxLogs) {
-                    logContent.removeChild(logContent.firstChild);
-                }
-            } catch (error) {
-                console.error("添加日志条目时出错:", error);
-            }
-        }
-
-        // 修改CSS样式，确保日志容器始终可见
-        const additionalStyles = `
-            .log-container {
-                display: flex !important;  /* 强制显示 */
-                flex-direction: column;
-                min-height: 200px;
-                max-height: calc(100vh - 100px);
-                opacity: 1 !important;  /* 强制可见 */
-            }
-            
-            .log-content {
-                flex: 1;
-                overflow-y: auto;
-                min-height: 100px;
-                opacity: 1 !important;
-            }
-            
-            .log-entry {
-                opacity: 1;
-                transition: opacity 0.3s ease-in;
-                margin-bottom: 4px;
-                word-break: break-word;
-            }
-        `;
-
-        // 添加样式到页面
-        const styleSheet = document.createElement("style");
-        styleSheet.textContent = additionalStyles;
-        document.head.appendChild(styleSheet);
-
-        // 配置 marked 选项
-        marked.setOptions({
-            breaks: true,      // 支持 GitHub 风格的换行
-            gfm: true,         // 启用 GitHub 风格的 Markdown
-            sanitize: false,   // 允许 HTML 标签
-            headerIds: false,  // 禁用标题自动ID
-            mangle: false      // 禁用标题ID混淆
-        });
 
         function addMessage(text, isUser, context = null) {
             const messagesDiv = document.getElementById('chatMessages');
@@ -881,23 +650,6 @@
 
             messagesDiv.appendChild(messageDiv);
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
-        }
-
-        async function handleLogin() {
-            try {
-                const response = await fetch('/health', {
-                    headers: {
-                        'Authorization': getAuthHeader()
-                    }
-                });
-                
-                if (response.ok) {
-                    return true;
-                }
-            } catch (error) {
-                console.error('登录失败:', error);
-            }
-            return false;
         }
     </script>
 </body>

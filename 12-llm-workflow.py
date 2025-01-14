@@ -10,6 +10,7 @@ import asyncio
 from datetime import datetime  # 修改这里
 from async_rag import AsyncLLMRAG
 import time
+from dotenv import load_dotenv
 
 # 动态导入 LLMRAG
 spec = importlib.util.spec_from_file_location("llm_rag", "11-llm-rag.py")
@@ -432,7 +433,10 @@ async def main():
         import os   
         # 配置
         DATA_PATH = "output/data_with_abstracts.json"
-        API_KEY=os.getenv("DASH_SCOPE_API_KEY","")
+        load_dotenv()  
+        API_KEY=os.getenv("DASH_SCOPE_API_KEY")
+        if not API_KEY:
+            raise ValueError("DASH_SCOPE_API_KEY 环境变量未设置")
         
         # 初始化 RAG 系统
         rag_system = LLMRAG(
@@ -447,7 +451,13 @@ async def main():
             api_key=API_KEY,
             base_url="https://dashscope.aliyuncs.com/compatible-mode/v1"
         )
-        
+        # 测试OpenAI
+        response = llm_client.chat.completions.create(
+            model="qwen-long",
+            messages=[{"role": "user", "content": "你好"}]
+        )
+        print(response)
+
         # 初始化工作流管理器
         workflow = WorkflowManager(rag_system, llm_client)
         
