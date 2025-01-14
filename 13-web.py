@@ -15,10 +15,6 @@ import asyncio
 from event_bus import EventBus
 import httpx
 import json
-from fastapi.security import HTTPBasic, HTTPBasicCredentials
-from starlette.status import HTTP_401_UNAUTHORIZED
-import secrets
-from async_rag import AsyncLLMRAG  # 添加导入
 
 # 获取项目根目录的绝对路径
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -38,6 +34,7 @@ root_logger = logging.getLogger()
 # 添加WebSocket处理器到根日志记录器
 class WebSocketHandler(logging.Handler):
     def emit(self, record):
+        return # 禁用WebSocket日志
         try:
             # 从 extra 中获取用户ID
             user_id = getattr(record, 'user_id', None)
@@ -186,24 +183,6 @@ async def forward_to_websocket(message: str):
 # 订阅 EventBus 消息
 event_bus.subscribe(forward_to_websocket)
 
-# 在创建 FastAPI app 之后添加认证相关代码
-security = HTTPBasic()
-
-# 从环境变量获取认证信息，如果没有则使用默认值
-ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin")
-ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "password123")
-
-def get_current_username(credentials: HTTPBasicCredentials = Depends(security)):
-    correct_username = secrets.compare_digest(credentials.username, ADMIN_USERNAME)
-    correct_password = secrets.compare_digest(credentials.password, ADMIN_PASSWORD)
-    if not (correct_username and correct_password):
-        raise HTTPException(
-            status_code=HTTP_401_UNAUTHORIZED,
-            detail="用户名或密码不正确",
-            headers={"WWW-Authenticate": "Basic"},
-        )
-    return credentials.username
-
 @app.on_event("startup")
 async def startup_event():
     """服务启动时初始化系统"""
@@ -211,10 +190,14 @@ async def startup_event():
     
     
     try:
-        import os   
+        import os 
+
         # 配置
         DATA_PATH = "output/data_with_abstracts.json"
-        API_KEY=os.getenv("DASH_SCOPE_API_KEY","")
+        load_dotenv()  
+        API_KEY=os.getenv("DASH_SCOPE_API_KEY")
+        if not API_KEY:
+            raise ValueError("DASH_SCOPE_API_KEY 环境变量未设置")
         
         # 初始化OpenAI客户端
         http_client = httpx.Client()  # 改用同步客户端
@@ -241,7 +224,7 @@ async def startup_event():
         raise
 
 @app.post("/api/ask", response_model=QuestionResponse)
-async def ask_question(request: QuestionRequest, username: str = Depends(get_current_username)):
+async def ask_question(request: QuestionRequest):
     """处理问答请求"""
     try:
         # 创建一个带有用户ID的日志适配器
@@ -271,7 +254,7 @@ async def ask_question(request: QuestionRequest, username: str = Depends(get_cur
         )
 
 @app.get("/health")
-async def health_check(username: str = Depends(get_current_username)):
+async def health_check():
     """健康检查接口"""
     return {
         "status": "healthy",
@@ -280,36 +263,18 @@ async def health_check(username: str = Depends(get_current_username)):
     }
 
 @app.get("/", response_class=HTMLResponse)
-async def home(request: Request, username: str = Depends(get_current_username)):
+async def home(request: Request):
     """提供Web界面"""
     return templates.TemplateResponse(
         "index.html",
-        {
-            "request": request,
-            "admin_username": ADMIN_USERNAME,
-            "admin_password": ADMIN_PASSWORD
-        }
+        {"request": request}
     )
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     # 获取认证头
     try:
-        auth_header = websocket.headers.get('authorization')
-        if not auth_header or not auth_header.startswith('Basic '):
-            await websocket.close(code=1008)
-            return
-            
-        import base64
-        auth_decoded = base64.b64decode(auth_header[6:]).decode('utf-8')
-        username, password = auth_decoded.split(':')
-        
-        if not (secrets.compare_digest(username, ADMIN_USERNAME) and 
-                secrets.compare_digest(password, ADMIN_PASSWORD)):
-            await websocket.close(code=1008)
-            return
-            
-        await manager.connect(websocket)
+        await websocket.accept()
         while True:
             await websocket.receive_text()
     except Exception as e:
@@ -318,7 +283,7 @@ async def websocket_endpoint(websocket: WebSocket):
         await manager.disconnect(websocket)
 
 @app.get("/download-manual")
-async def download_manual(username: str = Depends(get_current_username)):
+async def download_manual():
     """提供学生手册PDF下载"""
     pdf_path = "data/student-manual.pdf"  # 替换为实际的PDF文件路径
     if not os.path.exists(pdf_path):
@@ -333,21 +298,6 @@ async def download_manual(username: str = Depends(get_current_username)):
 async def websocket_ask_endpoint(websocket: WebSocket):
     """处理流式问答的 WebSocket 连接"""
     try:
-        # 验证认证
-        auth_header = websocket.headers.get('authorization')
-        if not auth_header or not auth_header.startswith('Basic '):
-            await websocket.close(code=1008)
-            return
-            
-        import base64
-        auth_decoded = base64.b64decode(auth_header[6:]).decode('utf-8')
-        username, password = auth_decoded.split(':')
-        
-        if not (secrets.compare_digest(username, ADMIN_USERNAME) and 
-                secrets.compare_digest(password, ADMIN_PASSWORD)):
-            await websocket.close(code=1008)
-            return
-            
         await websocket.accept()
         logger.info("问答 WebSocket 连接已建立")
         
