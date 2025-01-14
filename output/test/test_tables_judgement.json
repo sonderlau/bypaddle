@@ -1,0 +1,97 @@
+[
+    {
+        "question": "优秀奖学金奖项",
+        "judgement": "优秀",
+        "table_file": "page41_table0"
+    },
+    {
+        "question": "单项奖学金",
+        "judgement": "优秀",
+        "table_file": "page41_table1"
+    },
+    {
+        "question": "学生干部的德育标准分加分",
+        "judgement": "优秀",
+        "table_file": "page74_table0"
+    },
+    {
+        "question": "学生干部德育分加分细则",
+        "judgement": "优秀",
+        "table_file": "page74_table0"
+    },
+    {
+        "question": "荣誉加分",
+        "judgement": "不及格\n\n你的作答内容与手册中的实际记录内容在结构和细节上存在较大差异。手册中的实际记录内容主要关注的是个人荣誉和团队荣誉的具体分值，而你的作答内容则详细列出了学科竞赛、体育竞赛和艺术竞赛的奖励政策，包括具体的分数和现金奖励。两者在内容和结构上没有直接的对应关系，因此评价为不及格。",
+        "table_file": "page76_table0"
+    },
+    {
+        "question": "竞赛类加分",
+        "judgement": "不及格 / 中等",
+        "table_file": "page79_table0"
+    },
+    {
+        "question": "论文和学术研究成果加分",
+        "judgement": "不及格\n\n你的作答内容主要集中在学科竞赛的奖励政策，而没有涉及论文和学术研究成果的加分政策。根据文档中的实际记录，论文和学术研究成果有明确的加分标准，包括不同级别的刊物和各类专利的加分细则。因此，你的作答在内容上严重缺失，未能涵盖题目要求的关键部分。",
+        "table_file": "page80_table0"
+    },
+    {
+        "question": "成绩绩点换算办法",
+        "judgement": "不及格\n\n你的作答内容主要集中在GPA的加分奖励规则和综合素质测评中的智育测评部分，而文档中的实际记录内容则是关于百分制成绩与五级记分制、二级记分制之间的对应关系。两者的重点和内容完全不同，因此无法匹配。",
+        "table_file": "page136_table0"
+    },
+    {
+        "question": "学科竞赛成绩奖励的具体办法",
+        "judgement": "中等",
+        "table_file": "page168_table0"
+    },
+    {
+        "question": "学科竞赛获奖的学分认定标准",
+        "judgement": "优秀",
+        "table_file": "page170_table0"
+    },
+    {
+        "question": "学科竞赛奖励的奖金金额标准",
+        "judgement": "优秀",
+        "table_file": "page173_table0"
+    },
+    {
+        "question": "体育竞赛奖励学分分数",
+        "judgement": "优秀",
+        "table_file": "page177_table0"
+    },
+    {
+        "question": "艺术竞赛奖励学分数",
+        "judgement": "优秀",
+        "table_file": "page178_table0"
+    },
+    {
+        "question": "体育竞赛绩点奖励",
+        "judgement": "优秀",
+        "table_file": "page179_table0"
+    },
+    {
+        "question": "省大学生运动会奖励",
+        "judgement": "良好 / 不及格\n\n你的作答内容与手册中的实际记录存在明显的不一致。具体来说，你在“现金奖励”部分的数字与手册中的实际记录完全一致，但在其他部分（如课程加分奖励、GPA奖励、其他规定等）没有提供具体的数字和详细内容，导致整体结构和内容不完整。因此，评价为不及格。",
+        "table_file": "page180_table0"
+    },
+    {
+        "question": "互联网+比赛奖金",
+        "judgement": "优秀 / 及格\n\n你的作答内容在整体结构上较为完整，但与实际文档中的表格格式和内容存在一些差异。具体来说：\n\n1. **表格格式**：实际文档中的内容是一个简洁的表格，而你的作答内容则是文字描述形式，没有使用表格。\n2. **内容细节**：你的作答内容包含了更多的细节，如国家奖学金参评推荐名额、指导教师团队奖金等，这些内容在实际文档中并未出现。\n3. **数字准确性**：你在学生团队奖金部分的数字与实际文档一致，但在指导教师团队奖金部分的数字有较大出入。\n\n综上所述，你的作答内容在数字准确性方面存在较大问题，但在整体结构和内容完整性上有一定的表现，因此评为“及格”。",
+        "table_file": "page189_table0"
+    },
+    {
+        "question": "指导教师团队成果认定",
+        "judgement": "中等",
+        "table_file": "page190_table1"
+    },
+    {
+        "question": "互联网+指导教师团队奖金",
+        "judgement": "优秀",
+        "table_file": "page191_table0"
+    },
+    {
+        "question": "统一熄灯和开关门时间",
+        "judgement": "良好",
+        "table_file": "page212_table0"
+    }
+]
