@@ -10,6 +10,7 @@ import httpx
 import time
 from datetime import datetime  # 修改这里
 import asyncio
+from dotenv import load_dotenv
 
 # 动态导入向量处理器
 spec = importlib.util.spec_from_file_location("vector_processor", "7-1.vector-with-abstract.py")
@@ -326,7 +327,7 @@ class LLMRAG:
                 if chunk.choices[0].delta.content is not None:
                     token = chunk.choices[0].delta.content
                     token_count += len(token)
-                    print(f"收到第 {chunk_count} 个chunk，token: {token!r}")
+                    #print(f"收到第 {chunk_count} 个chunk，token: {token!r}")
                     yield token
                     await asyncio.sleep(0.05)  # 增加小延迟确保分段发送
             
@@ -375,7 +376,10 @@ def main():
     import os   
     # 配置
     DATA_PATH = "output/data_with_abstracts.json"
-    API_KEY = os.getenv("DASH_SCOPE_API_KEY","")
+    load_dotenv()  
+    API_KEY=os.getenv("DASH_SCOPE_API_KEY")
+    if not API_KEY:
+        raise ValueError("DASH_SCOPE_API_KEY 环境变量未设置")
     
     # 初始化RAG系统
     rag = LLMRAG(
