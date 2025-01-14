@@ -44,7 +44,7 @@ class AsyncLLMRAG:
         """
         self.rag = rag_system
         # 只针对RAG搜索的信号量
-        self.search_semaphore = asyncio.Semaphore(1)
+        self.search_semaphore = asyncio.Semaphore(10)
         
     async def answer_question(self, query: str, return_context: bool = False, user_id: str = None) -> Dict[str, Any]:
         """异步回答问题"""
